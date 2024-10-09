@@ -1,6 +1,10 @@
+from collections.abc import Callable
+
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
+
+from .base import MLP
 
 # NOTE: the paper is missing quite a lot of details that are in the official code
 #
@@ -14,26 +18,6 @@ import flax.linen as nn
 #    And they're also multiplied by the number of tasks
 #
 # These are marked with "NOTE: <number>"
-
-
-class MLP(nn.Module):
-    """A Flax Module to represent an MLP feature extractor.
-    Will be used to implement f(s_t) and h(z_Tau)."""
-
-    num_hidden_layers: int  # 1 for f(s_t), 0 for h(z_Tau)
-    output_dim: int  # D
-    hidden_dim: int = 400
-    activate_last: bool = False
-
-    @nn.compact
-    def __call__(self, x: jax.Array) -> jax.Array:
-        for i in range(self.num_hidden_layers):
-            x = nn.Dense(self.hidden_dim, name=f"layer_{i}")(x)
-            x = nn.relu(x)
-        x = nn.Dense(self.output_dim, name=f"layer_{self.num_hidden_layers}")(x)
-        if self.activate_last:
-            x = nn.relu(x)
-        return x
 
 
 class BasePolicyNetworkLayer(nn.Module):
@@ -52,9 +36,9 @@ class BasePolicyNetworkLayer(nn.Module):
             out_axes=1,  # Module out axis index is 1, output will be [B, n, d]
             axis_size=self.num_modules,
         )(self.module_dim)
-        return modules(
-            x
-        )  # NOTE: 4, relu *should* be here according to the paper, but it's after the weighted sum
+
+        # NOTE: 4, activation *should* be here according to the paper, but it's after the weighted sum
+        return modules(x)
 
 
 class RoutingNetworkLayer(nn.Module):
@@ -62,25 +46,36 @@ class RoutingNetworkLayer(nn.Module):
 
     embedding_dim: int  # D
     num_modules: int
+    activation_fn: Callable[[jax.Array], jax.Array] = jax.nn.relu
+    kernel_init: Callable = jax.nn.initalizers.he_uniform
+    bias_init: Callable = lambda: jax.nn.initializers.zeros
     last: bool = False  # NOTE: 5
 
     def setup(self):
-        self.prob_embedding_fc = nn.Dense(self.embedding_dim)  # W_u^l
+        self.prob_embedding_fc = nn.Dense(
+            self.embedding_dim,
+            kernel_init=self.kernel_init(),
+            bias_init=self.bias_init(),
+        )  # W_u^l
         # NOTE: 5
         prob_output_dim = (
             self.num_modules if self.last else self.num_modules * self.num_modules
         )
-        self.prob_output_fc = nn.Dense(prob_output_dim)  # W_d^l
+        self.prob_output_fc = nn.Dense(
+            prob_output_dim,
+            kernel_init=jax.nn.initializers.truncated_normal(lower=-1e-3, upper=1e-3),
+            bias_init=jax.nn.initializers.zeros,
+        )  # W_d^l
 
     def __call__(
         self, task_embedding: jax.Array, prev_probs: jax.Array | None = None
     ) -> jax.Array:
         if prev_probs is not None:  # Eq 5-only bit
             task_embedding *= self.prob_embedding_fc(prev_probs)
-        x = self.prob_output_fc(nn.relu(task_embedding))
+        x = self.prob_output_fc(self.activation_fn(task_embedding))
         if not self.last:  # NOTE: 5
             x = x.reshape(-1, self.num_modules, self.num_modules)
-        x = nn.softmax(x, axis=-1)  # Eq. 7
+        x = jax.nn.softmax(x, axis=-1)  # Eq. 7
         return x
 
 
@@ -95,11 +90,12 @@ class SoftModularizationNetwork(nn.Module):
     num_layers: int
     num_modules: int
     output_dim: int  # o, 1 for Q networks and 2 * action_dim for policy networks
+    activation_fn: Callable[[jax.Array], jax.Array] = jax.nn.relu
     routing_skip_connections: bool = True  # NOTE: 3
 
     def setup(self) -> None:
         # Base policy network layers
-        self.f = MLP(num_hidden_layers=1, output_dim=self.embedding_dim)
+        self.f = MLP(depth=1, output_dim=self.embedding_dim)
         self.layers = [
             BasePolicyNetworkLayer(self.num_modules, self.module_dim)
             for _ in range(self.num_layers)
@@ -107,10 +103,8 @@ class SoftModularizationNetwork(nn.Module):
         self.output_head = nn.Dense(self.output_dim)
 
         # Routing network layers
-        self.z = MLP(num_hidden_layers=0, output_dim=self.embedding_dim)
-        self.task_embedding_fc = MLP(
-            num_hidden_layers=1, hidden_dim=256, output_dim=256
-        )  # NOTE: 1
+        self.z = MLP(depth=0, output_dim=self.embedding_dim)
+        self.task_embedding_fc = MLP(depth=1, width=256, output_dim=256)  # NOTE: 1
         self.prob_fcs = [
             RoutingNetworkLayer(
                 embedding_dim=256,
@@ -120,15 +114,17 @@ class SoftModularizationNetwork(nn.Module):
             for i in range(self.num_layers)  # NOTE: 5
         ]
 
-    def __call__(self, s_t: jax.Array, z_Tau: jax.Array) -> jax.Array:
+    def __call__(self, x: jax.Array, task_idx: jax.Array) -> jax.Array:
         # Feature extraction
-        obs_embedding = self.f(s_t)
-        task_embedding = self.z(z_Tau) * obs_embedding
-        task_embedding = self.task_embedding_fc(nn.relu(task_embedding))  # NOTE: 1
+        obs_embedding = self.f(x)
+        task_embedding = self.z(task_idx) * obs_embedding
+        task_embedding = self.task_embedding_fc(
+            self.activation_fn(task_embedding)
+        )  # NOTE: 1
 
         # Initial layer inputs
         prev_probs = None
-        obs_embedding = nn.relu(obs_embedding)  # NOTE: 2
+        obs_embedding = self.activation_fn(obs_embedding)  # NOTE: 2
         module_ins = jnp.stack(
             [obs_embedding for _ in range(self.num_modules)], axis=-2
         )
@@ -141,7 +137,9 @@ class SoftModularizationNetwork(nn.Module):
             self.num_layers - 1
         ):  # Equation 8, holds for all layers except L
             probs = self.prob_fcs[i](task_embedding, prev_probs)
-            module_outs = nn.relu(probs @ self.layers[i](module_ins))  # NOTE: 4
+            module_outs = self.activation_fn(
+                probs @ self.layers[i](module_ins)
+            )  # NOTE: 4
 
             # Post processing
             probs = probs.reshape(-1, self.num_modules * self.num_modules)
@@ -157,5 +155,5 @@ class SoftModularizationNetwork(nn.Module):
         probs = jnp.expand_dims(
             self.prob_fcs[-1](task_embedding, prev_probs), axis=-1
         )  # NOTE: 5
-        output_embedding = nn.relu(jnp.sum(module_outs * probs, axis=-2))
+        output_embedding = self.activation_fn(jnp.sum(module_outs * probs, axis=-2))
         return self.output_head(output_embedding)

@@ -5,10 +5,16 @@ description = "Codebase for ablating MTRL"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "distrax>=0.1.5",
     "flax>=0.9.0",
     "gymnasium>=1.0.0",
     "jax[cuda12]>=0.4.34",
+    "jaxtyping>=0.2.34",
     "numpy>=2.1.2",
     "orbax-checkpoint>=0.7.0",
     "tyro>=0.8.11",
 ]
+
+[tool.ruff]
+ignore = ["F722"]
+ignore-init-module-imports = true
