@@ -1,0 +1,13 @@
+[project]
+name = "mtrl"
+version = "0.1.0"
+description = "Codebase for ablating MTRL"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gymnasium>=1.0.0",
+    "jax[cuda12]>=0.4.34",
+    "numpy>=2.1.2",
+    "orbax-checkpoint>=0.7.0",
+    "tyro>=0.8.11",
+]
