@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from .base import MLP
-from .initializers import uniform_init
+from .initializers import uniform
 
 # NOTE: the paper is missing quite a lot of details that are in the official code
 #
@@ -33,8 +33,8 @@ class BasePolicyNetworkLayer(nn.Module):
             nn.Dense,
             variable_axes={"params": 0},  # Different params per module
             split_rngs={"params": True},  # Different initialization per module
-            in_axes=1,  # Module in axis index is 1, assuming x to be of shape [B, n, D]
-            out_axes=1,  # Module out axis index is 1, output will be [B, n, d]
+            in_axes=-2,
+            out_axes=-2,
             axis_size=self.num_modules,
         )(self.module_dim)
 
@@ -64,7 +64,7 @@ class RoutingNetworkLayer(nn.Module):
         )
         self.prob_output_fc = nn.Dense(
             prob_output_dim,
-            kernel_init=uniform_init(1e-3),
+            kernel_init=uniform(1e-3),
             bias_init=jax.nn.initializers.zeros,
         )  # W_d^l
 
@@ -75,7 +75,7 @@ class RoutingNetworkLayer(nn.Module):
             task_embedding *= self.prob_embedding_fc(prev_probs)
         x = self.prob_output_fc(self.activation_fn(task_embedding))
         if not self.last:  # NOTE: 5
-            x = x.reshape(-1, self.num_modules, self.num_modules)
+            x = x.reshape(*x.shape[:-1], self.num_modules, self.num_modules)
         x = jax.nn.softmax(x, axis=-1)  # Eq. 7
         return x
 
@@ -175,7 +175,7 @@ class SoftModularizationNetwork(nn.Module):
             )  # NOTE: 4
 
             # Post processing
-            probs = probs.reshape(-1, self.num_modules * self.num_modules)
+            probs = probs.reshape(probs.shape[:-1], self.num_modules * self.num_modules)
             if weights is not None and self.routing_skip_connections:  # NOTE: 3
                 weights.append(probs)
                 prev_probs = jnp.concatenate(weights, axis=-1)
