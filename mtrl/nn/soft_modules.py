@@ -26,6 +26,8 @@ class BasePolicyNetworkLayer(nn.Module):
 
     num_modules: int  # n
     module_dim: int  # d
+    kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
+    bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
 
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
@@ -36,7 +38,7 @@ class BasePolicyNetworkLayer(nn.Module):
             in_axes=-2,
             out_axes=-2,
             axis_size=self.num_modules,
-        )(self.module_dim)
+        )(self.module_dim, kernel_init=self.kernel_init, bias_init=self.bias_init)
 
         # NOTE: 4, activation *should* be here according to the paper, but it's after the weighted sum
         return modules(x)
@@ -111,7 +113,12 @@ class SoftModularizationNetwork(nn.Module):
             activation_fn=self.activation_fn,
         )
         self.layers = [
-            BasePolicyNetworkLayer(self.num_modules, self.module_dim)
+            BasePolicyNetworkLayer(
+                self.num_modules,
+                self.module_dim,
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
+            )
             for _ in range(self.num_layers)
         ]
         self.output_head = nn.Dense(

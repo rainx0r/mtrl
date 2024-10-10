@@ -1,4 +1,5 @@
 from collections.abc import Callable
+
 import flax.linen as nn
 import jax
 
