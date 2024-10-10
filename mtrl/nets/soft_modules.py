@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from .base import MLP
+from .initializers import uniform_init
 
 # NOTE: the paper is missing quite a lot of details that are in the official code
 #
@@ -46,16 +47,16 @@ class RoutingNetworkLayer(nn.Module):
 
     embedding_dim: int  # D
     num_modules: int
-    activation_fn: Callable[[jax.Array], jax.Array] = jax.nn.relu
-    kernel_init: Callable = jax.nn.initalizers.he_uniform
-    bias_init: Callable = lambda: jax.nn.initializers.zeros
+    activation_fn: Callable[[jax.typing.ArrayLike], jax.Array] = jax.nn.relu
+    kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
+    bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
     last: bool = False  # NOTE: 5
 
     def setup(self):
         self.prob_embedding_fc = nn.Dense(
             self.embedding_dim,
-            kernel_init=self.kernel_init(),
-            bias_init=self.bias_init(),
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
         )  # W_u^l
         # NOTE: 5
         prob_output_dim = (
@@ -63,7 +64,7 @@ class RoutingNetworkLayer(nn.Module):
         )
         self.prob_output_fc = nn.Dense(
             prob_output_dim,
-            kernel_init=jax.nn.initializers.truncated_normal(lower=-1e-3, upper=1e-3),
+            kernel_init=uniform_init(1e-3),
             bias_init=jax.nn.initializers.zeros,
         )  # W_d^l
 
@@ -90,26 +91,58 @@ class SoftModularizationNetwork(nn.Module):
     num_layers: int
     num_modules: int
     output_dim: int  # o, 1 for Q networks and 2 * action_dim for policy networks
-    activation_fn: Callable[[jax.Array], jax.Array] = jax.nn.relu
+
+    activation_fn: Callable[[jax.typing.ArrayLike], jax.Array] = jax.nn.relu
+    kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
+    bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
+
+    head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initalizers.he_normal()
+    head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
+
     routing_skip_connections: bool = True  # NOTE: 3
 
     def setup(self) -> None:
         # Base policy network layers
-        self.f = MLP(depth=1, output_dim=self.embedding_dim)
+        self.f = MLP(
+            depth=1,
+            output_dim=self.embedding_dim,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+            activation_fn=self.activation_fn,
+        )
         self.layers = [
             BasePolicyNetworkLayer(self.num_modules, self.module_dim)
             for _ in range(self.num_layers)
         ]
-        self.output_head = nn.Dense(self.output_dim)
+        self.output_head = nn.Dense(
+            self.output_dim,
+            kernel_init=self.head_kernel_init,
+            bias_init=self.head_bias_init,
+        )
 
         # Routing network layers
-        self.z = MLP(depth=0, output_dim=self.embedding_dim)
-        self.task_embedding_fc = MLP(depth=1, width=256, output_dim=256)  # NOTE: 1
+        self.z = MLP(
+            depth=0,
+            output_dim=self.embedding_dim,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+        )
+        self.task_embedding_fc = MLP(
+            depth=1,
+            width=256,
+            output_dim=256,
+            activation_fn=self.activation_fn,
+            kernel_init=self.kernel_init,
+            bias_init=self.bias_init,
+        )  # NOTE: 1
         self.prob_fcs = [
             RoutingNetworkLayer(
                 embedding_dim=256,
                 num_modules=self.num_modules,
                 last=i == self.num_layers - 1,
+                activation_fn=self.activation_fn,
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
             )
             for i in range(self.num_layers)  # NOTE: 5
         ]

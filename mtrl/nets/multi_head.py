@@ -13,9 +13,12 @@ class MultiHeadNetwork(nn.Module):
     # TODO: support variable width?
     width: int = 400
     depth: int = 3
-    activation_fn: Callable[[jax.Array], jax.Array] = jax.nn.relu
-    kernel_init: Callable = jax.nn.initializers.he_uniform
-    bias_init: Callable = lambda: jax.nn.initializers.constant(0.1)
+    activation_fn: Callable[[jax.typing.ArrayLike], jax.Array] = jax.nn.relu
+    kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
+    bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
+
+    head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
+    head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
 
     @nn.compact
     def __call__(
@@ -34,8 +37,8 @@ class MultiHeadNetwork(nn.Module):
             x = nn.Dense(
                 self.width,
                 name=f"layer_{i}",
-                kernel_init=self.kernel_init(),
-                bias_init=self.bias_init(),
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
             )(x)
             x = self.activation_fn(x)
 
@@ -53,14 +56,16 @@ class MultiHeadNetwork(nn.Module):
             in_axes=None,  # type: ignore[reportArgumentType]
             out_axes=1,
             axis_size=self.num_heads,
-        )(self.output_dim, kernel_init=self.kernel_init(), bias_init=self.bias_init())(
-            x
-        )
+        )(
+            self.output_dim,
+            kernel_init=self.head_kernel_init,
+            bias_init=self.head_bias_init,
+        )(x)
         chex.assert_shape(x, (batch_dim, self.num_heads, self.output_dim))
 
         # 3) Collect the output from the appropriate head for each input
         task_indices = task_idx.argmax(axis=-1)
-        x = x[:, task_indices]
+        x = x[jnp.arange(batch_dim), task_indices]
         chex.assert_shape(x, (batch_dim, self.output_dim))
 
         if self.activate_last:
