@@ -1,24 +1,22 @@
-from collections.abc import Callable
-
 import chex
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
+from mtrl.config.nn import NeuralNetworkConfig
+
 
 class MultiHeadNetwork(nn.Module):
-    num_heads: int
-    output_dim: int
-    activate_last: bool = False
-    # TODO: support variable width?
-    width: int = 400
-    depth: int = 3
-    activation_fn: Callable[[jax.typing.ArrayLike], jax.Array] = jax.nn.relu
-    kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
-    bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
+    config: NeuralNetworkConfig
 
+    num_heads: int
+    head_dim: int
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
+
+    activate_last: bool = False
+
+    # TODO: support variable width?
 
     @nn.compact
     def __call__(
@@ -33,14 +31,15 @@ class MultiHeadNetwork(nn.Module):
         x = jnp.concatenate((x, task_idx), axis=-1)
         chex.assert_shape(x, (batch_dim, obs_dim + task_idx_dim))
 
-        for i in range(self.depth):
+        for i in range(self.config.depth):
             x = nn.Dense(
-                self.width,
+                self.config.width,
                 name=f"layer_{i}",
-                kernel_init=self.kernel_init,
-                bias_init=self.bias_init,
+                kernel_init=self.config.kernel_init(),
+                bias_init=self.config.bias_init(),
+                use_bias=self.config.use_bias,
             )(x)
-            x = self.activation_fn(x)
+            x = self.config.activation(x)
 
         # 2) Create a head for each task. Pass *every* input through *every* head
         # because we assume the batch dim is not necessarily a task dimension
@@ -57,18 +56,19 @@ class MultiHeadNetwork(nn.Module):
             out_axes=1,
             axis_size=self.num_heads,
         )(
-            self.output_dim,
+            self.head_dim,
             kernel_init=self.head_kernel_init,
             bias_init=self.head_bias_init,
+            use_bias=self.config.use_bias,
         )(x)
-        chex.assert_shape(x, (batch_dim, self.num_heads, self.output_dim))
+        chex.assert_shape(x, (batch_dim, self.num_heads, self.head_dim))
 
         # 3) Collect the output from the appropriate head for each input
         task_indices = task_idx.argmax(axis=-1)
         x = x[jnp.arange(batch_dim), task_indices]
-        chex.assert_shape(x, (batch_dim, self.output_dim))
+        chex.assert_shape(x, (batch_dim, self.head_dim))
 
         if self.activate_last:
-            x = self.activation_fn(x)
+            x = self.config.activation(x)
 
         return x
