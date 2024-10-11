@@ -17,6 +17,9 @@ class MLP(nn.Module):
     kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_uniform()
     bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.constant(0.1)
     use_bias: bool = True
+
+    head_kernel_init: jax.nn.initializers.Initializer | None = None
+    head_bias_init: jax.nn.initializers.Initializer | None = None
     activate_last: bool = False
 
     @nn.compact
@@ -33,8 +36,8 @@ class MLP(nn.Module):
         x = nn.Dense(
             self.head_dim,
             name=f"layer_{self.depth}",
-            kernel_init=self.kernel_init,
-            bias_init=self.bias_init,
+            kernel_init=self.head_kernel_init or self.kernel_init,
+            bias_init=self.head_bias_init or self.bias_init,
             use_bias=self.use_bias,
         )(x)
         if self.activate_last:

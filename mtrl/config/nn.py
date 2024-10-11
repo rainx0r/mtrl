@@ -1,5 +1,7 @@
+import enum
 from dataclasses import dataclass
-from .utils import Initializer, Activation
+
+from .utils import Activation, Initializer
 
 
 @dataclass(frozen=True)
@@ -26,7 +28,16 @@ class NeuralNetworkConfig:
 
 
 @dataclass(frozen=True)
+class MultiHeadConfig(NeuralNetworkConfig):
+    num_tasks: int | None = None
+    """The number of tasks (which in turn determines the number of heads)."""
+
+
+@dataclass(frozen=True)
 class SoftModulesConfig(NeuralNetworkConfig):
+    num_tasks: int | None = None
+    """The number of tasks (which in turn determines the number of heads)."""
+
     width: int = 256
     """The number of neurons in the Dense layers around the network."""
 
@@ -38,3 +49,18 @@ class SoftModulesConfig(NeuralNetworkConfig):
 
     embedding_dim: int = 400
     """The dimension of the observation / task index embedding. `D` in the paper."""
+
+
+# class Architecture(enum.Enum):
+#     SoftModules = enum.auto()
+#     MultiHead = enum.auto()
+#     Vanilla = enum.auto()
+#
+#     def verify_config(self, config: NeuralNetworkConfig):
+#         match self:
+#             case Architecture.Vanilla:
+#                 assert isinstance(config, NeuralNetworkConfig)
+#             case Architecture.MultiHead:
+#                 assert isinstance(config, NeuralNetworkConfig)
+#             case Architecture.SoftModules:
+#                 assert isinstance(config, SoftModulesConfig)

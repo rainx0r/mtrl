@@ -1,15 +1,13 @@
-import chex
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from mtrl.config.nn import NeuralNetworkConfig
+from mtrl.config.nn import MultiHeadConfig
 
 
 class MultiHeadNetwork(nn.Module):
-    config: NeuralNetworkConfig
+    config: MultiHeadConfig
 
-    num_heads: int
     head_dim: int
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
@@ -22,14 +20,10 @@ class MultiHeadNetwork(nn.Module):
     def __call__(
         self,
         x: jax.Array,
-        task_idx: jax.Array,
     ) -> jax.Array:
-        batch_dim, obs_dim = x.shape
-        task_idx_dim = task_idx.shape[-1]
-
-        # 1) Forward both the obs and the task idx through an MLP
-        x = jnp.concatenate((x, task_idx), axis=-1)
-        chex.assert_shape(x, (batch_dim, obs_dim + task_idx_dim))
+        batch_dim = x.shape[0]
+        assert self.config.num_tasks is not None, "Number of tasks must be provided."
+        task_idx = x[..., -self.config.num_tasks :]
 
         for i in range(self.config.depth):
             x = nn.Dense(
@@ -54,19 +48,17 @@ class MultiHeadNetwork(nn.Module):
             split_rngs={"params": True},
             in_axes=None,  # type: ignore[reportArgumentType]
             out_axes=1,
-            axis_size=self.num_heads,
+            axis_size=self.config.num_tasks,
         )(
             self.head_dim,
             kernel_init=self.head_kernel_init,
             bias_init=self.head_bias_init,
             use_bias=self.config.use_bias,
         )(x)
-        chex.assert_shape(x, (batch_dim, self.num_heads, self.head_dim))
 
         # 3) Collect the output from the appropriate head for each input
         task_indices = task_idx.argmax(axis=-1)
         x = x[jnp.arange(batch_dim), task_indices]
-        chex.assert_shape(x, (batch_dim, self.head_dim))
 
         if self.activate_last:
             x = self.config.activation(x)

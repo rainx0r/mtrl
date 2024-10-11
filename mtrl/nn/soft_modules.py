@@ -93,7 +93,7 @@ class SoftModularizationNetwork(nn.Module):
     config: SoftModulesConfig
 
     head_dim: int  # o, 1 for Q networks and 2 * action_dim for policy networks
-    head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initalizers.he_normal()
+    head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
 
     routing_skip_connections: bool = True  # NOTE: 3
@@ -138,7 +138,11 @@ class SoftModularizationNetwork(nn.Module):
             for i in range(self.config.depth)  # NOTE: 5
         ]
 
-    def __call__(self, x: jax.Array, task_idx: jax.Array) -> jax.Array:
+    def __call__(self, x: jax.Array) -> jax.Array:
+        assert self.config.num_tasks is not None, "Number of tasks must be provided."
+        task_idx = x[..., -self.config.num_tasks :]
+        x = x[..., : -self.config.num_tasks]
+
         # Feature extraction
         obs_embedding = self.f(x)
         task_embedding = self.z(task_idx) * obs_embedding

@@ -3,7 +3,11 @@ import enum
 import flax.linen
 import jax
 
-import mtrl.nn.initializers
+
+def _uniform_init(bound: float) -> jax.nn.initializers.Initializer:
+    import mtrl.nn.initializers
+
+    return mtrl.nn.initializers.uniform(bound)
 
 
 class Initializer(enum.Enum):
@@ -13,7 +17,7 @@ class Initializer(enum.Enum):
     XAVIER_NORMAL = enum.member(jax.nn.initializers.xavier_normal)
     XAVIER_UNIFORM = enum.member(jax.nn.initializers.xavier_uniform)
     CONSTANT = enum.member(jax.nn.initializers.constant)
-    UNIFORM = enum.member(mtrl.nn.initializers.uniform)
+    UNIFORM = enum.member(_uniform_init)
 
     def __call__(self, *args):
         return self.value(*args)
