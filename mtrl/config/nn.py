@@ -1,10 +1,11 @@
-import enum
 from dataclasses import dataclass
+
+from mtrl.config.optim import OptimizerConfig
 
 from .utils import Activation, Initializer
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class NeuralNetworkConfig:
     width: int = 400
     """The number of neurons in the hidden layers."""
@@ -26,17 +27,20 @@ class NeuralNetworkConfig:
     activation: Activation = Activation.ReLU
     """The activation function to use."""
 
+    optimizer: OptimizerConfig = OptimizerConfig()
+    """The optimizer to use for the network."""
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, kw_only=True)
 class MultiHeadConfig(NeuralNetworkConfig):
-    num_tasks: int | None = None
-    """The number of tasks (which in turn determines the number of heads)."""
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs & to determine the number of heads)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class SoftModulesConfig(NeuralNetworkConfig):
-    num_tasks: int | None = None
-    """The number of tasks (which in turn determines the number of heads)."""
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs)."""
 
     width: int = 256
     """The number of neurons in the Dense layers around the network."""
@@ -49,18 +53,3 @@ class SoftModulesConfig(NeuralNetworkConfig):
 
     embedding_dim: int = 400
     """The dimension of the observation / task index embedding. `D` in the paper."""
-
-
-# class Architecture(enum.Enum):
-#     SoftModules = enum.auto()
-#     MultiHead = enum.auto()
-#     Vanilla = enum.auto()
-#
-#     def verify_config(self, config: NeuralNetworkConfig):
-#         match self:
-#             case Architecture.Vanilla:
-#                 assert isinstance(config, NeuralNetworkConfig)
-#             case Architecture.MultiHead:
-#                 assert isinstance(config, NeuralNetworkConfig)
-#             case Architecture.SoftModules:
-#                 assert isinstance(config, SoftModulesConfig)

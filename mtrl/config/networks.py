@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ContinuousActionPolicyConfig:
-    network_config: NeuralNetworkConfig = NeuralNetworkConfig()
+    network_config: NeuralNetworkConfig = NeuralNetworkConfig(width=400, depth=3)
     """The config for the neural network to use for function approximation."""
 
     squash_tanh: bool = True
@@ -19,7 +19,7 @@ class ContinuousActionPolicyConfig:
 
 @dataclass(frozen=True)
 class QValueFunctionConfig:
-    network_config: NeuralNetworkConfig = NeuralNetworkConfig()
+    network_config: NeuralNetworkConfig = NeuralNetworkConfig(width=400, depth=3)
     """The config for the neural network to use for function approximation."""
 
     use_classification: bool = False

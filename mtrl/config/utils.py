@@ -2,6 +2,7 @@ import enum
 
 import flax.linen
 import jax
+import optax
 
 
 def _uniform_init(bound: float) -> jax.nn.initializers.Initializer:
@@ -36,3 +37,13 @@ class Activation(enum.Enum):
 
     def __call__(self, *args):
         return self.value(*args)
+
+
+class Optimizer(enum.Enum):
+    Adam = enum.member(optax.adam)
+    AdamW = enum.member(optax.adamw)
+    RMSProp = enum.member(optax.rmsprop)
+    SGD = enum.member(optax.sgd)
+
+    def __call__(self, learning_rate: float):
+        return self.value(learning_rate)

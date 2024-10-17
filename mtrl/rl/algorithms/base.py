@@ -1,40 +1,55 @@
 import abc
+from typing import Generic, Self, TypeVar
 
-import jax
-import numpy as np
-import numpy.typing as npt
+import time
+
 from flax import struct
 
-from mtrl.config.rl import AlgorithmConfig, TrainingConfig
-from mtrl.types import ReplayBufferSamples, Rollout
+from mtrl.config.rl import AlgorithmConfig, TrainingConfig, OffPolicyTrainingConfig
+from mtrl.types import (
+    Action,
+    LogDict,
+    Observation,
+    ReplayBufferSamples,
+    Rollout,
+)
+from typing import override
+
+AlgorithmConfigType = TypeVar("AlgorithmConfigType", bound=AlgorithmConfig)
+TrainingConfigType = TypeVar("TrainingConfigType", bound=TrainingConfig)
 
 
-class Algorithm(abc.ABC, struct.PyTreeNode):
+class Algorithm(
+    abc.ABC, Generic[AlgorithmConfigType, TrainingConfigType], struct.PyTreeNode
+):
     """Inspired by https://github.com/kevinzakka/nanorl/blob/main/nanorl/agent.py"""
+
+    num_tasks: int = struct.field(pytree_node=False)
 
     @staticmethod
     @abc.abstractmethod
-    def initialize(config: AlgorithmConfig) -> "Algorithm": ...
+    def initialize(config: AlgorithmConfigType) -> "Algorithm": ...
 
     @abc.abstractmethod
-    def update(
-        self, data: ReplayBufferSamples | Rollout
-    ) -> tuple["Algorithm", dict[str, float]]: ...
+    def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
-    def sample_action(
-        self, observations: jax.typing.ArrayLike
-    ) -> tuple["Algorithm", npt.NDArray[np.float64]]: ...
+    def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
 
     @abc.abstractmethod
-    def sample_action_and_log_prob(
-        self, observations: jax.typing.ArrayLike
-    ) -> tuple["Algorithm", npt.NDArray[np.float64]]: ...
+    def eval_action(self, observation: Observation) -> Action: ...
 
     @abc.abstractmethod
-    def eval_action(
-        self, observations: jax.typing.ArrayLike
-    ) -> npt.NDArray[np.float64]: ...
+    def train(self, config: TrainingConfigType) -> Self: ...
 
-    @abc.abstractmethod
-    def train(self, config: TrainingConfig) -> "Algorithm": ...
+
+class OffPolicyAlgorithm(
+    Algorithm[AlgorithmConfigType, OffPolicyTrainingConfig],
+    Generic[AlgorithmConfigType],
+):
+    @override
+    def train(self, config: OffPolicyTrainingConfig) -> Self:
+        # start_time = time.time()
+        #
+        # for global_step in range(start_step, config.total_steps)
+        ...
