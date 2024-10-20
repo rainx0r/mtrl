@@ -20,7 +20,7 @@ from mtrl.types import (
 
 class Checkpoint(TypedDict):
     agent: Algorithm
-    replay_buffer: NotRequired[ReplayBufferCheckpoint]
+    buffer: NotRequired[ReplayBufferCheckpoint]
     envs: EnvCheckpoint
     rngs: RNGCheckpoint
     metadata: CheckpointMetadata
@@ -59,7 +59,7 @@ def get_checkpoint_save_args(
         ),
         metadata=ocp.args.JsonSave(
             {
-                "total_steps": total_steps,
+                "step": total_steps,
                 "episodes_ended": episodes_ended,
             }
         ),
@@ -87,22 +87,4 @@ def get_checkpoint_restore_args(
             global_numpy_rng_state=ocp.args.NumpyRandomKeyRestore(),
         ),
         metadata=ocp.args.JsonRestore(),
-    )
-
-
-def get_checkpoint_manager(checkpoint_dir: Path, experiment_name: str):
-    return ocp.CheckpointManager(
-        Path(checkpoint_dir / f"{experiment_name}/checkpoints").absolute(),
-        item_names=(
-            "agent",
-            "buffer",
-            "env_states",
-            "rngs",
-            "metadata",
-        ),
-        options=ocp.CheckpointManagerOptions(
-            max_to_keep=5,
-            create=True,
-            best_fn=lambda x: x["charts/mean_success_rate"],
-        ),
     )

@@ -3,12 +3,13 @@ import time
 from collections import deque
 from typing import Deque, Generic, Self, TypeVar, override
 
+import gymnasium as gym
 import numpy as np
+import orbax.checkpoint as ocp
 import wandb
 from flax import struct
-from orbax.checkpoint import CheckpointManager
 
-from mtrl.checkpoint import get_checkpoint_save_args
+from mtrl.checkpoint import get_checkpoint_save_args, load_env_checkpoints
 from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig, TrainingConfig
 from mtrl.envs import EnvConfig
 from mtrl.rl.buffers import MultiTaskReplayBuffer
@@ -16,6 +17,7 @@ from mtrl.types import (
     Action,
     Agent,
     CheckpointMetadata,
+    EnvCheckpoint,
     LogDict,
     Observation,
     ReplayBufferCheckpoint,
@@ -30,7 +32,7 @@ TrainingConfigType = TypeVar("TrainingConfigType", bound=TrainingConfig)
 class Algorithm(
     abc.ABC, Agent, Generic[AlgorithmConfigType, TrainingConfigType], struct.PyTreeNode
 ):
-    """Inspired by https://github.com/kevinzakka/nanorl/blob/main/nanorl/agent.py"""
+    """Based on https://github.com/kevinzakka/nanorl/blob/main/nanorl/agent.py"""
 
     num_tasks: int = struct.field(pytree_node=False)
 
@@ -54,9 +56,10 @@ class Algorithm(
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
-        checkpoint_manager: CheckpointManager | None = None,
+        checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
+        envs_checkpoint: EnvCheckpoint | None = None,
     ) -> Self: ...
 
 
@@ -64,6 +67,16 @@ class OffPolicyAlgorithm(
     Algorithm[AlgorithmConfigType, OffPolicyTrainingConfig],
     Generic[AlgorithmConfigType],
 ):
+    def spawn_replay_buffer(
+        self, envs: gym.vector.VectorEnv, config: OffPolicyTrainingConfig, seed: int = 1
+    ) -> MultiTaskReplayBuffer:
+        return MultiTaskReplayBuffer(
+            total_capacity=config.buffer_size,
+            num_tasks=self.num_tasks,
+            envs=envs,
+            seed=seed,
+        )
+
     @override
     def train(
         self,
@@ -71,16 +84,19 @@ class OffPolicyAlgorithm(
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
-        checkpoint_manager: CheckpointManager | None = None,
+        checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
+        envs_checkpoint: EnvCheckpoint | None = None,
     ) -> Self:
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
 
         envs = env_config.spawn()
-
         obs, _ = envs.reset()
+        if envs_checkpoint is not None:
+            load_env_checkpoints(envs, envs_checkpoint)
+
         has_autoreset = np.full((envs.num_envs,), False)
         start_step, episodes_ended = 0, 0
 
@@ -88,13 +104,7 @@ class OffPolicyAlgorithm(
             start_step = checkpoint_metadata["step"]
             episodes_ended = checkpoint_metadata["episodes"]
 
-        replay_buffer = MultiTaskReplayBuffer(
-            total_capacity=config.buffer_size,
-            num_tasks=self.num_tasks,
-            envs=envs,
-            seed=seed,
-        )
-
+        replay_buffer = self.spawn_replay_buffer(envs, config, seed)
         if buffer_checkpoint is not None:
             replay_buffer.load_checkpoint(buffer_checkpoint)
 
