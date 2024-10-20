@@ -46,7 +46,7 @@ class MultiHeadNetwork(nn.Module):
             nn.Dense,
             variable_axes={"params": 0},
             split_rngs={"params": True},
-            in_axes=None,  # type: ignore[reportArgumentType]
+            in_axes=None,  # pyright: ignore [reportArgumentType]
             out_axes=1,
             axis_size=self.config.num_tasks,
         )(

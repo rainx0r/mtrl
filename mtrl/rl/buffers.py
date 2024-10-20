@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 
-from mtrl.types import ReplayBufferSamples, Rollout
+from mtrl.types import ReplayBufferCheckpoint, ReplayBufferSamples, Rollout
 
 
 class MultiTaskReplayBuffer:
@@ -54,7 +54,7 @@ class MultiTaskReplayBuffer:
         self.dones = np.zeros((self.capacity, self.num_tasks, 1), dtype=np.float32)
         self.pos = 0
 
-    def checkpoint(self) -> dict:
+    def checkpoint(self) -> ReplayBufferCheckpoint:
         return {
             "data": {
                 "obs": self.obs,
@@ -68,7 +68,7 @@ class MultiTaskReplayBuffer:
             "rng_state": self._rng.__getstate__(),
         }
 
-    def load_checkpoint(self, ckpt: dict) -> None:
+    def load_checkpoint(self, ckpt: ReplayBufferCheckpoint) -> None:
         for key in ["data", "rng_state"]:
             assert key in ckpt
 
@@ -307,7 +307,7 @@ class MultiTaskRolloutBuffer:
             *map(
                 lambda x: x.reshape(-1, *x.shape[2:]) if x is not None else x,
                 task_rollouts,
-            )  # type: ignore[reportArgumentType]
+            )  # pyright: ignore [reportArgumentType]
         )
 
         return task_rollouts
@@ -378,7 +378,7 @@ class MultiTaskRolloutBuffer:
 
         # 4) Flatten rollout and time dimensions
         all_rollouts = Rollout(
-            *map(lambda x: x.reshape(self.num_tasks, -1, *x.shape[3:]), all_rollouts)  # type: ignore[reportArgumentType]
+            *map(lambda x: x.reshape(self.num_tasks, -1, *x.shape[3:]), all_rollouts)  # pyright: ignore [reportArgumentType, reportOptionalMemberAccess]
         )
 
         return all_rollouts

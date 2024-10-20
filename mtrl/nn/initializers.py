@@ -7,4 +7,4 @@ def uniform(bound: float) -> jax.nn.initializers.Initializer:
             key, shape=shape, minval=-bound, maxval=bound, dtype=dtype
         )
 
-    return _init  # type: ignore[reportReturnType]
+    return _init  # pyright: ignore [reportReturnType]
