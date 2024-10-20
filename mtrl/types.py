@@ -1,6 +1,7 @@
-from typing import NamedTuple
+from typing import NamedTuple, TypedDict, Any, Protocol
 
 import numpy as np
+import numpy.typing as npt
 
 from jaxtyping import Float
 
@@ -9,6 +10,10 @@ type LogDict = dict[str, float]
 Action = Float[np.ndarray, "... action_dim"]
 LogProb = Float[np.ndarray, "... 1"]
 Observation = Float[np.ndarray, "... obs_dim"]
+
+
+class Agent(Protocol):
+    def eval_action(self, observation: Observation) -> Action: ...
 
 
 class ReplayBufferSamples(NamedTuple):
@@ -35,3 +40,21 @@ class Rollout(NamedTuple):
     returns: Float[np.ndarray, "task timestep 1"] | None = None
     advantages: Float[np.ndarray, "task timestep 1"] | None = None
     episode_returns: Float[np.ndarray, "task timestep 1"] | None = None
+
+
+class CheckpointMetadata(TypedDict):
+    step: int
+    episodes: int
+
+
+class RNGCheckpoint(TypedDict):
+    python_rng_state: tuple[Any, ...]
+    global_numpy_rng_state: dict[str, Any]
+
+
+class ReplayBufferCheckpoint(TypedDict):
+    data: dict[str, npt.NDArray[np.float32] | int | bool]
+    rng_state: Any
+
+
+type EnvCheckpoint = list[tuple[str, dict[str, Any]]]

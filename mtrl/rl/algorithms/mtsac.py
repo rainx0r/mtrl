@@ -12,6 +12,7 @@ from flax import struct
 from flax.core import FrozenDict
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
+import optax
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
@@ -24,7 +25,7 @@ from mtrl.types import (
     Rollout,
 )
 
-from .base import Algorithm
+from .base import OffPolicyAlgorithm
 
 
 class MultiTaskTemperature(nn.Module):
@@ -73,9 +74,9 @@ def extract_task_weights(
     task_weights: jax.Array
 
     # TODO: check that this access works
-    log_alpha = alpha_params["log_alpha"]  # type: ignore[reportAssignmentType]
+    log_alpha = alpha_params["log_alpha"]  # pyright: ignore [reportAssignmentType]
     task_weights = jax.nn.softmax(-log_alpha)  # NOTE 6
-    task_weights = task_ids @ task_weights.reshape(-1, 1)  # type: ignore[reportAssignmentType]
+    task_weights = task_ids @ task_weights.reshape(-1, 1)  # pyright: ignore [reportAssignmentType]
     task_weights *= log_alpha.shape[0]  # NOTE 6
     return task_weights
 
@@ -86,6 +87,7 @@ class MTSACConfig(AlgorithmConfig):
     critic_config: QValueFunctionConfig = QValueFunctionConfig()
     temperature_optimizer_config: OptimizerConfig = OptimizerConfig()
     num_critics: int = 2
+    tau: float = 0.005
     use_task_weights: bool = False
 
     @cached_property
@@ -94,12 +96,13 @@ class MTSACConfig(AlgorithmConfig):
         return -np.prod(self.action_space.shape).item()
 
 
-class MTSAC(Algorithm[MTSACConfig]):
+class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     actor: TrainState
     critic: CriticTrainState
     alpha: TrainState
     key: PRNGKeyArray
     gamma: float = struct.field(pytree_node=False)
+    tau: float = struct.field(pytree_node=False)
     target_entropy: float = struct.field(pytree_node=False)
     use_task_weights: bool = struct.field(pytree_node=False)
 
@@ -179,7 +182,7 @@ class MTSAC(Algorithm[MTSACConfig]):
         ]:
             def alpha_loss(params: FrozenDict) -> Float[Array, ""]:
                 log_alpha: jax.Array
-                log_alpha = task_ids @ params["log_alpha"].reshape(-1, 1)  # type: ignore[reportAttributeAccessIssue]
+                log_alpha = task_ids @ params["log_alpha"].reshape(-1, 1)  # pyright: ignore [reportAttributeAccessIssue]
                 return (
                     -log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)
                 ).mean()
@@ -200,7 +203,7 @@ class MTSAC(Algorithm[MTSACConfig]):
                 task_weights,
                 {
                     "losses/alpha_loss": alpha_loss_value,
-                    "alpha": jnp.exp(_alpha.params).sum(),  # type: ignore[reportArgumentType]
+                    "alpha": jnp.exp(_alpha.params).sum(),  # pyright: ignore [reportReturnType,reportArgumentType]
                 },
             )
 
@@ -239,15 +242,23 @@ class MTSAC(Algorithm[MTSACConfig]):
         )(self.actor.params)
         actor = self.actor.apply_gradients(grads=actor_grads)
 
-        return (
-            self.replace(
-                key=key,
-                actor=actor,
-                critic=critic,
-                alpha=alpha,
-            ),
-            {**logs, "losses/actor_loss": actor_loss_value},
+        self = self.replace(
+            key=key,
+            actor=actor,
+            critic=critic,
+            alpha=alpha,
         )
+
+        qf_state = self.critic.replace(
+            target_params=optax.incremental_update(
+                self.critic.params,
+                self.critic.target_params,  # pyright: ignore [reportArgumentType]
+                self.tau,
+            )
+        )
+        self = self.replace(critic=qf_state)
+
+        return (self, {**logs, "losses/actor_loss": actor_loss_value})
 
     @override
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]:

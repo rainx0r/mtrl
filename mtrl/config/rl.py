@@ -13,9 +13,7 @@ class AlgorithmConfig:
 @dataclass(frozen=True, kw_only=True)
 class TrainingConfig:
     total_steps: int
-    max_episode_steps: int = 500
     evaluation_frequency: int = 200_000 // 500
-    evaluation_num_episodes: int = 50
 
 
 @dataclass(frozen=True)
