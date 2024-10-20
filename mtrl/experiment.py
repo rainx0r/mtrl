@@ -51,6 +51,7 @@ class Experiment:
         buffer_checkpoint = None
         checkpoint_manager = None
         checkpoint_metadata = None
+        envs_checkpoint = None
         if self.checkpoint:
             checkpoint_items = (
                 "agent",
@@ -73,9 +74,8 @@ class Experiment:
 
             if self.resume and checkpoint_manager.latest_step() is not None:
                 if is_off_policy:
-                    dummy_envs = self.env.spawn()
                     assert isinstance(self.training_config, OffPolicyTrainingConfig)
-                    rb = algorithm.spawn_replay_buffer(dummy_envs, self.training_config)
+                    rb = algorithm.spawn_replay_buffer(self.env, self.training_config)
                 else:
                     rb = None
                 ckpt: Checkpoint = checkpoint_manager.restore(  # pyright: ignore [reportAssignmentType]
@@ -104,4 +104,5 @@ class Experiment:
             checkpoint_manager=checkpoint_manager,
             checkpoint_metadata=checkpoint_metadata,
             buffer_checkpoint=buffer_checkpoint,
+            envs_checkpoint=envs_checkpoint,
         )

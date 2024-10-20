@@ -25,7 +25,8 @@ class MultiTaskReplayBuffer:
         self,
         total_capacity: int,
         num_tasks: int,
-        envs: gym.vector.VectorEnv,
+        env_obs_space: gym.Space,
+        env_action_space: gym.Space,
         seed: int | None = None,
     ):
         assert (
@@ -34,8 +35,8 @@ class MultiTaskReplayBuffer:
         self.capacity = total_capacity // num_tasks
         self.num_tasks = num_tasks
         self._rng = np.random.default_rng(seed)
-        self._obs_shape = np.array(envs.single_observation_space.shape).prod()
-        self._action_shape = np.array(envs.single_action_space.shape).prod()
+        self._obs_shape = np.array(env_obs_space.shape).prod()
+        self._action_shape = np.array(env_action_space.shape).prod()
         self.full = False
         self.reset()  # Init buffer
 

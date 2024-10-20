@@ -1,9 +1,10 @@
 """Inspired by https://github.com/kevinzakka/robopianist-rl/blob/main/sac.py"""
 
 import dataclasses
-from functools import cached_property
+from functools import cached_property, partial
 from typing import Self, override
 
+import gymnasium as gym
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -17,6 +18,8 @@ import optax
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import AlgorithmConfig
+from mtrl.envs import EnvConfig
+from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
     Action,
     LogDict,
@@ -86,6 +89,7 @@ class MTSACConfig(AlgorithmConfig):
     actor_config: ContinuousActionPolicyConfig = ContinuousActionPolicyConfig()
     critic_config: QValueFunctionConfig = QValueFunctionConfig()
     temperature_optimizer_config: OptimizerConfig = OptimizerConfig()
+    initial_temperature: float = 1.0
     num_critics: int = 2
     tau: float = 0.005
     use_task_weights: bool = False
@@ -108,7 +112,69 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
     @override
     @staticmethod
-    def initialize(config: MTSACConfig) -> "MTSAC": ...
+    def initialize(
+        config: MTSACConfig, env_config: EnvConfig, seed: int = 1
+    ) -> "MTSAC":
+        assert isinstance(
+            env_config.action_space, gym.spaces.Box
+        ), "Non-box spaces currently not supported."
+        assert isinstance(
+            env_config.observation_space, gym.spaces.Box
+        ), "Non-box spaces currently not supported."
+
+        master_key = jax.random.PRNGKey(seed)
+        algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
+            jax.random.split(master_key, 4)
+        )
+
+        actor_net = ContinuousActionPolicy(
+            int(np.prod(env_config.action_space.shape)), config=config.actor_config
+        )
+        dummy_obs = jnp.array(
+            [env_config.observation_space.sample() for _ in range(config.num_tasks)]
+        )
+        actor = TrainState.create(
+            apply_fn=actor_net.apply,
+            params=actor_net.init(actor_init_key, dummy_obs),
+            tx=config.actor_config.network_config.optimizer.spawn(),
+        )
+
+        critic_cls = partial(QValueFunction, config=config.critic_config)
+        critic_net = Ensemble(critic_cls, num=config.num_critics)
+        dummy_action = jnp.array(
+            [env_config.action_space.sample() for _ in range(config.num_tasks)]
+        )
+        critic_init_params = critic_net.init(critic_init_key, dummy_obs, dummy_action)
+        critic = CriticTrainState.create(
+            apply_fn=critic_net.apply,
+            params=critic_init_params,
+            target_params=critic_init_params,
+            tx=config.critic_config.network_config.optimizer.spawn(),
+        )
+
+        alpha_net = MultiTaskTemperature(config.num_tasks, config.initial_temperature)
+        dummy_task_ids = jnp.array(
+            [np.ones((config.num_tasks,)) for _ in range(config.num_tasks)]
+        )
+        alpha = TrainState.create(
+            apply_fn=alpha_net.apply,
+            params=alpha_net.init(alpha_init_key, dummy_task_ids),
+            tx=config.temperature_optimizer_config.spawn(),
+        )
+
+        target_entropy = -np.prod(env_config.action_space.shape).item()
+
+        return MTSAC(
+            num_tasks=config.num_tasks,
+            actor=actor,
+            critic=critic,
+            alpha=alpha,
+            key=algorithm_key,
+            gamma=config.gamma,
+            tau=config.tau,
+            target_entropy=target_entropy,
+            use_task_weights=config.use_task_weights,
+        )
 
     @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import distrax
 import flax.linen as nn
 import jax
@@ -55,3 +57,20 @@ class QValueFunction(nn.Module):
             raise NotImplementedError(
                 "Value prediction as classification is not supported yet."
             )
+
+
+class Ensemble(nn.Module):
+    net_cls: nn.Module | Callable[..., nn.Module]
+    num: int = 2
+
+    @nn.compact
+    def __call__(self, *args):
+        ensemble = nn.vmap(
+            self.net_cls,
+            variable_axes={"params": 0},
+            split_rngs={"params": True, "dropout": True},
+            in_axes=None,  # pyright: ignore [reportArgumentType]
+            out_axes=0,
+            axis_size=self.num,
+        )
+        return ensemble()(*args)

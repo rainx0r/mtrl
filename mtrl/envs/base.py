@@ -14,6 +14,14 @@ class EnvConfig(abc.ABC):
     evaluation_num_episodes: int = 50
     terminate_on_success: bool = False
 
+    @property
+    @abc.abstractmethod
+    def action_space(self) -> gym.Space: ...
+
+    @property
+    @abc.abstractmethod
+    def observation_space(self) -> gym.Space: ...
+
     @abc.abstractmethod
     def spawn(self) -> gym.vector.VectorEnv: ...
 

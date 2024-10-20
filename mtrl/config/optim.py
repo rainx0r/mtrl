@@ -7,8 +7,13 @@ import optax
 class OptimizerConfig:
     lr: float = 3e-4
     optimizer: Optimizer = Optimizer.Adam
-    clip_grad_norm: float | None = None
+    max_grad_norm: float | None = None
 
-    def instantiate(self) -> optax.GradientTransformation:
-        # TODO: Clip grad norm
-        return self.optimizer(learning_rate=self.lr)
+    def spawn(self) -> optax.GradientTransformation:
+        optim = self.optimizer(learning_rate=self.lr)
+        if self.max_grad_norm is not None:
+            optim = optax.chain(
+                optax.clip_by_global_norm(self.max_grad_norm),
+                optim,
+            )
+        return optim

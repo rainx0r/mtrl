@@ -38,7 +38,9 @@ class Algorithm(
 
     @staticmethod
     @abc.abstractmethod
-    def initialize(config: AlgorithmConfigType) -> "Algorithm": ...
+    def initialize(
+        config: AlgorithmConfigType, env_config: EnvConfig, seed: int = 1
+    ) -> "Algorithm": ...
 
     @abc.abstractmethod
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]: ...
@@ -68,12 +70,13 @@ class OffPolicyAlgorithm(
     Generic[AlgorithmConfigType],
 ):
     def spawn_replay_buffer(
-        self, envs: gym.vector.VectorEnv, config: OffPolicyTrainingConfig, seed: int = 1
+        self, env_config: EnvConfig, config: OffPolicyTrainingConfig, seed: int = 1
     ) -> MultiTaskReplayBuffer:
         return MultiTaskReplayBuffer(
             total_capacity=config.buffer_size,
             num_tasks=self.num_tasks,
-            envs=envs,
+            env_obs_space=env_config.observation_space,
+            env_action_space=env_config.action_space,
             seed=seed,
         )
 
@@ -104,7 +107,7 @@ class OffPolicyAlgorithm(
             start_step = checkpoint_metadata["step"]
             episodes_ended = checkpoint_metadata["episodes"]
 
-        replay_buffer = self.spawn_replay_buffer(envs, config, seed)
+        replay_buffer = self.spawn_replay_buffer(env_config, config, seed)
         if buffer_checkpoint is not None:
             replay_buffer.load_checkpoint(buffer_checkpoint)
 
