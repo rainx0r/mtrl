@@ -1,5 +1,6 @@
 import abc
 from dataclasses import dataclass
+from functools import cached_property
 
 import gymnasium as gym
 
@@ -14,16 +15,16 @@ class EnvConfig(abc.ABC):
     evaluation_num_episodes: int = 50
     terminate_on_success: bool = False
 
-    @property
+    @cached_property
     @abc.abstractmethod
     def action_space(self) -> gym.Space: ...
 
-    @property
+    @cached_property
     @abc.abstractmethod
     def observation_space(self) -> gym.Space: ...
 
     @abc.abstractmethod
-    def spawn(self) -> gym.vector.VectorEnv: ...
+    def spawn(self, seed: int = 1) -> gym.vector.VectorEnv: ...
 
     @abc.abstractmethod
     def evaluate(

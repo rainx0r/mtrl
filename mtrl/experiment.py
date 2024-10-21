@@ -45,7 +45,7 @@ class Experiment:
     def run(self) -> None:
         algorithm_cls = get_algorithm_for_config(self.algorithm)
         algorithm: Algorithm
-        algorithm = algorithm_cls.initialize(self.algorithm)
+        algorithm = algorithm_cls.initialize(self.algorithm, self.env)
         is_off_policy = isinstance(algorithm, OffPolicyAlgorithm)
 
         buffer_checkpoint = None

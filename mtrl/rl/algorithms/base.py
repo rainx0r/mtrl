@@ -3,7 +3,6 @@ import time
 from collections import deque
 from typing import Deque, Generic, Self, TypeVar, override
 
-import gymnasium as gym
 import numpy as np
 import orbax.checkpoint as ocp
 import wandb
@@ -95,7 +94,7 @@ class OffPolicyAlgorithm(
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
 
-        envs = env_config.spawn()
+        envs = env_config.spawn(seed)
         obs, _ = envs.reset()
         if envs_checkpoint is not None:
             load_env_checkpoints(envs, envs_checkpoint)
