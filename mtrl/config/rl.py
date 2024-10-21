@@ -1,13 +1,10 @@
 from dataclasses import dataclass
 
-import gymnasium as gym
-
 
 @dataclass(frozen=True)
 class AlgorithmConfig:
     num_tasks: int
     gamma: float = 0.99
-    action_space: gym.Space | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

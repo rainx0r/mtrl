@@ -1,7 +1,7 @@
 """Inspired by https://github.com/kevinzakka/robopianist-rl/blob/main/sac.py"""
 
 import dataclasses
-from functools import cached_property, partial
+from functools import partial
 from typing import Self, override
 
 import gymnasium as gym
@@ -93,11 +93,6 @@ class MTSACConfig(AlgorithmConfig):
     num_critics: int = 2
     tau: float = 0.005
     use_task_weights: bool = False
-
-    @cached_property
-    def target_entropy(self) -> float:
-        assert self.action_space is not None and self.action_space.shape is not None
-        return -np.prod(self.action_space.shape).item()
 
 
 class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
