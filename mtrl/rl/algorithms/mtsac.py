@@ -87,7 +87,7 @@ def extract_task_weights(
 class MTSACConfig(AlgorithmConfig):
     actor_config: ContinuousActionPolicyConfig = ContinuousActionPolicyConfig()
     critic_config: QValueFunctionConfig = QValueFunctionConfig()
-    temperature_optimizer_config: OptimizerConfig = OptimizerConfig()
+    temperature_optimizer_config: OptimizerConfig = OptimizerConfig(max_grad_norm=None)
     initial_temperature: float = 1.0
     num_critics: int = 2
     tau: float = 0.005
@@ -179,11 +179,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:
         action, key = _sample_action(self.actor, observation, self.key)
-        return self.replace(key=key), action
+        return self.replace(key=key), jax.device_get(action)
 
     @override
     def eval_action(self, observation: Observation) -> Action:
-        return _eval_action(self.actor, observation)
+        return jax.device_get(_eval_action(self.actor, observation))
 
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:

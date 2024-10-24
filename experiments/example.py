@@ -1,7 +1,10 @@
+import jax
+import jax.numpy as jnp
 from dataclasses import dataclass
 
 from pathlib import Path
 
+from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.experiment import Experiment
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
@@ -35,10 +38,14 @@ def main() -> None:
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=SoftModulesConfig(num_tasks=10)
+                network_config=SoftModulesConfig(
+                    num_tasks=10, depth=2, optimizer=OptimizerConfig(max_grad_norm=1.0)
+                )
             ),
             critic_config=QValueFunctionConfig(
-                network_config=SoftModulesConfig(num_tasks=10)
+                network_config=SoftModulesConfig(
+                    num_tasks=10, depth=2, optimizer=OptimizerConfig(max_grad_norm=1.0)
+                )
             ),
             num_critics=2,
             use_task_weights=True,

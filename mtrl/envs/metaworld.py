@@ -1,22 +1,21 @@
 # pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportOptionalMemberAccess=false
 # TODO: all of this will be in actual MW in a future release
 import base64
+from dataclasses import dataclass
 from functools import cached_property, partial
 from typing import override
 
-from jax.numpy import float64
-from .base import EnvConfig
-
-from dataclasses import dataclass
 import gymnasium as gym
-
 import metaworld
 import metaworld.types
-from metaworld.envs.mujoco.sawyer_xyz import SawyerXYZEnv
 import numpy as np
 import numpy.typing as npt
 from metaworld.envs.mujoco.env_dict import ALL_V2_ENVIRONMENTS
+from metaworld.envs.mujoco.sawyer_xyz import SawyerXYZEnv
+
 from mtrl.types import Agent
+
+from .base import EnvConfig
 
 
 def _get_task_names(

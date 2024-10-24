@@ -1,14 +1,15 @@
 import abc
-import wandb
+import time
 from collections import deque
 from typing import Deque, Generic, Self, TypeVar, override
-import numpy as np
-import time
 
+import gymnasium as gym
+import numpy as np
 import orbax.checkpoint as ocp
+import wandb
 from flax import struct
 
-from mtrl.checkpoint import get_checkpoint_save_args, load_env_checkpoints
+from mtrl.checkpoint import get_checkpoint_save_args
 from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig, TrainingConfig
 from mtrl.envs import EnvConfig
 from mtrl.rl.buffers import MultiTaskReplayBuffer
@@ -16,7 +17,6 @@ from mtrl.types import (
     Action,
     Agent,
     CheckpointMetadata,
-    EnvCheckpoint,
     LogDict,
     Observation,
     ReplayBufferCheckpoint,
@@ -54,13 +54,13 @@ class Algorithm(
     def train(
         self,
         config: TrainingConfigType,
+        envs: gym.vector.VectorEnv,
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        envs_checkpoint: EnvCheckpoint | None = None,
     ) -> Self: ...
 
 
@@ -83,21 +83,18 @@ class OffPolicyAlgorithm(
     def train(
         self,
         config: OffPolicyTrainingConfig,
+        envs: gym.vector.VectorEnv,
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        envs_checkpoint: EnvCheckpoint | None = None,
     ) -> Self:
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
 
-        envs = env_config.spawn(seed)
         obs, _ = envs.reset()
-        if envs_checkpoint is not None:
-            load_env_checkpoints(envs, envs_checkpoint)
 
         has_autoreset = np.full((envs.num_envs,), False)
         start_step, episodes_ended = 0, 0

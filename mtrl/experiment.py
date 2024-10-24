@@ -8,7 +8,11 @@ import orbax.checkpoint as ocp
 import numpy as np
 import wandb
 
-from mtrl.checkpoint import Checkpoint, get_checkpoint_restore_args
+from mtrl.checkpoint import (
+    Checkpoint,
+    get_checkpoint_restore_args,
+    load_env_checkpoints,
+)
 from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig, TrainingConfig
 from mtrl.envs import EnvConfig
 from mtrl.rl.algorithms import (
@@ -43,6 +47,8 @@ class Experiment:
         wandb.init(dir=str(self.data_dir), **wandb_kwargs)
 
     def run(self) -> None:
+        envs = self.env.spawn(self.seed)
+
         algorithm_cls = get_algorithm_for_config(self.algorithm)
         algorithm: Algorithm
         algorithm = algorithm_cls.initialize(self.algorithm, self.env)
@@ -75,7 +81,10 @@ class Experiment:
             if self.resume and checkpoint_manager.latest_step() is not None:
                 if is_off_policy:
                     assert isinstance(self.training_config, OffPolicyTrainingConfig)
-                    rb = algorithm.spawn_replay_buffer(self.env, self.training_config)
+                    rb = algorithm.spawn_replay_buffer(
+                        self.env,
+                        self.training_config,
+                    )
                 else:
                     rb = None
                 ckpt: Checkpoint = checkpoint_manager.restore(  # pyright: ignore [reportAssignmentType]
@@ -88,6 +97,8 @@ class Experiment:
                     buffer_checkpoint = ckpt["buffer"]  # pyright: ignore [reportTypedDictNotRequiredAccess]
 
                 envs_checkpoint = ckpt["envs"]
+                load_env_checkpoints(envs, envs_checkpoint)
+
                 random.setstate(ckpt["rngs"]["python_rng_state"])
                 np.random.set_state(ckpt["rngs"]["global_numpy_rng_state"])
 
@@ -98,11 +109,11 @@ class Experiment:
 
         algorithm.train(
             config=self.training_config,
+            envs=envs,
             env_config=self.env,
             seed=self.seed,
             track=self._wandb_enabled,
             checkpoint_manager=checkpoint_manager,
             checkpoint_metadata=checkpoint_metadata,
             buffer_checkpoint=buffer_checkpoint,
-            envs_checkpoint=envs_checkpoint,
         )
