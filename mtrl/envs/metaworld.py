@@ -1,8 +1,10 @@
-# pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false
+# pyright: reportAttributeAccessIssue=false, reportIncompatibleMethodOverride=false, reportOptionalMemberAccess=false
 # TODO: all of this will be in actual MW in a future release
 import base64
 from functools import cached_property, partial
 from typing import override
+
+from jax.numpy import float64
 from .base import EnvConfig
 
 from dataclasses import dataclass
@@ -10,6 +12,7 @@ import gymnasium as gym
 
 import metaworld
 import metaworld.types
+from metaworld.envs.mujoco.sawyer_xyz import SawyerXYZEnv
 import numpy as np
 import numpy.typing as npt
 from metaworld.envs.mujoco.env_dict import ALL_V2_ENVIRONMENTS
@@ -131,6 +134,7 @@ class RandomTaskSelectWrapper(gym.Wrapper):
         sample_tasks_on_reset: bool = True,
     ):
         super().__init__(env)
+        self.unwrapped: SawyerXYZEnv
         self.tasks = tasks
         self.sample_tasks_on_reset = sample_tasks_on_reset
 
@@ -195,6 +199,7 @@ class PseudoRandomTaskSelectWrapper(gym.Wrapper):
         sample_tasks_on_reset: bool = False,
     ):
         super().__init__(env)
+        self.unwrapped: SawyerXYZEnv
         self.sample_tasks_on_reset = sample_tasks_on_reset
         self.tasks = tasks
         self.current_task_idx = -1
@@ -283,8 +288,8 @@ class CheckpointWrapper(gym.Wrapper):
         self.env.load_checkpoint(my_ckpt)
 
 
-def get_env_rng_checkpoint(env: metaworld.SawyerXYZEnv) -> dict[str, dict]:
-    return {
+def get_env_rng_checkpoint(env: SawyerXYZEnv) -> dict[str, dict]:
+    return {  # pyright: ignore [reportReturnType]
         "np_random_state": env.np_random.__getstate__(),
         "action_space_rng_state": env.action_space.np_random.__getstate__(),
         "obs_space_rng_state": env.observation_space.np_random.__getstate__(),
@@ -292,7 +297,7 @@ def get_env_rng_checkpoint(env: metaworld.SawyerXYZEnv) -> dict[str, dict]:
     }
 
 
-def set_env_rng(env: metaworld.SawyerXYZEnv, state: dict[str, dict]) -> None:
+def set_env_rng(env: SawyerXYZEnv, state: dict[str, dict]) -> None:
     assert "np_random_state" in state
     assert "action_space_rng_state" in state
     assert "obs_space_rng_state" in state
@@ -312,11 +317,10 @@ def _make_envs(
     terminate_on_success: bool = False,
     reward_func_version: str | None = None,
 ) -> gym.vector.VectorEnv:
-    def init_each_env(
-        env_cls: type[metaworld.SawyerXYZEnv], name: str, env_id: int
-    ) -> gym.Env:
+    def init_each_env(env_cls: type[SawyerXYZEnv], name: str, env_id: int) -> gym.Env:
         if reward_func_version is not None:
-            env = env_cls(reward_func_version=reward_func_version)
+            # env = env_cls(reward_func_version=reward_func_version)
+            raise NotImplementedError
         else:
             env = env_cls()
         env = gym.wrappers.TimeLimit(env, max_episode_steps or env.max_path_length)
@@ -335,7 +339,7 @@ def _make_envs(
         [
             partial(init_each_env, env_cls=env_cls, name=name, env_id=env_id)
             for env_id, (name, env_cls) in enumerate(benchmark.train_classes.items())
-        ]
+        ],
     )
 
 
@@ -347,9 +351,8 @@ class MetaworldConfig(EnvConfig):
     @override
     def action_space(self) -> gym.Space:
         return gym.spaces.Box(
-            np.array([-1, -1, -1, -1]),
-            np.array([+1, +1, +1, +1]),
-            dtype=np.float32,
+            np.array([-1, -1, -1, -1], dtype=np.float32),
+            np.array([+1, +1, +1, +1], dtype=np.float32),
         )
 
     @cached_property
@@ -370,13 +373,14 @@ class MetaworldConfig(EnvConfig):
             dtype=np.float64,
         )
         obs_obj_max_len = 14
-        obj_low = np.full(obs_obj_max_len, -np.inf, dtype=np.float64)
-        obj_high = np.full(obs_obj_max_len, +np.inf, dtype=np.float64)
+        obj_low = np.full(obs_obj_max_len, -np.inf)
+        obj_high = np.full(obs_obj_max_len, +np.inf)
         goal_low = goal_space.low
         goal_high = goal_space.high
         gripper_low = -1.0
         gripper_high = +1.0
-        return gym.spaces.Box(
+
+        env_obs_space = gym.spaces.Box(
             np.hstack(
                 (
                     _HAND_SPACE.low,
@@ -401,6 +405,23 @@ class MetaworldConfig(EnvConfig):
             ),
             dtype=np.float64,
         )
+
+        if self.use_one_hot:
+            num_tasks = 1
+            if self.env_id == "MT10":
+                num_tasks = 10
+            if self.env_id == "MT50":
+                num_tasks = 50
+            one_hot_ub = np.ones(num_tasks)
+            one_hot_lb = np.zeros(num_tasks)
+
+            env_obs_space = gym.spaces.Box(
+                np.concatenate([env_obs_space.low, one_hot_lb]),
+                np.concatenate([env_obs_space.high, one_hot_ub]),
+                dtype=np.float64,
+            )
+
+        return env_obs_space
 
     @override
     def evaluate(

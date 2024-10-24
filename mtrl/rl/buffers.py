@@ -14,6 +14,11 @@ class MultiTaskReplayBuffer:
     Each sampling step, it samples a batch for each tasks, returning a batch of shape (batch_size, num_tasks).
     """
 
+    # TODO: This buffer only works if we use task IDs. What if we don't have task IDs?
+    # Do we make this buffer truly general purpose and able to switch between task-agnostic
+    # and task-aware mode?
+    # Places where task IDs are used are marked with HACK:
+
     obs: npt.NDArray
     actions: npt.NDArray
     rewards: npt.NDArray
@@ -91,6 +96,7 @@ class MultiTaskReplayBuffer:
 
         It is assumed that the observation has a one-hot task embedding as its suffix.
         """
+        # HACK: explicit task idx extraction
         task_idx = obs[:, -self.num_tasks :].argmax(1)
 
         self.obs[self.pos, task_idx] = obs.copy()

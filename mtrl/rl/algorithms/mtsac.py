@@ -37,7 +37,7 @@ class MultiTaskTemperature(nn.Module):
 
     def setup(self):
         self.log_alpha = self.param(
-            "alpha",
+            "log_alpha",
             init_fn=lambda _: jnp.full(
                 (self.num_tasks,), jnp.log(self.initial_temperature)
             ),
@@ -76,8 +76,7 @@ def extract_task_weights(
     log_alpha: jax.Array
     task_weights: jax.Array
 
-    # TODO: check that this access works
-    log_alpha = alpha_params["log_alpha"]  # pyright: ignore [reportAssignmentType]
+    log_alpha = alpha_params["params"]["log_alpha"]  # pyright: ignore [reportAssignmentType]
     task_weights = jax.nn.softmax(-log_alpha)  # NOTE 6
     task_weights = task_ids @ task_weights.reshape(-1, 1)  # pyright: ignore [reportAssignmentType]
     task_weights *= log_alpha.shape[0]  # NOTE 6
@@ -134,6 +133,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             tx=config.actor_config.network_config.optimizer.spawn(),
         )
 
+        print("Actor Arch:", jax.tree_util.tree_map(jnp.shape, actor.params))
+        print("Actor Params:", sum(x.size for x in jax.tree.leaves(actor.params)))
+
         critic_cls = partial(QValueFunction, config=config.critic_config)
         critic_net = Ensemble(critic_cls, num=config.num_critics)
         dummy_action = jnp.array(
@@ -146,6 +148,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             target_params=critic_init_params,
             tx=config.critic_config.network_config.optimizer.spawn(),
         )
+
+        print("Critic Arch:", jax.tree_util.tree_map(jnp.shape, critic.params))
+        print("Critic Params:", sum(x.size for x in jax.tree.leaves(critic.params)))
 
         alpha_net = MultiTaskTemperature(config.num_tasks, config.initial_temperature)
         dummy_task_ids = jnp.array(
@@ -212,7 +217,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                     data.rewards + (1 - data.dones) * self.gamma * min_qf_next_target
                 )
 
-                q_pred = critic.apply_fn(params, data.observations, data.actions)
+                q_pred = self.critic.apply_fn(params, data.observations, data.actions)
                 if self.use_task_weights:
                     assert task_weights is not None
                     loss = (
@@ -243,13 +248,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         ]:
             def alpha_loss(params: FrozenDict) -> Float[Array, ""]:
                 log_alpha: jax.Array
-                log_alpha = task_ids @ params["log_alpha"].reshape(-1, 1)  # pyright: ignore [reportAttributeAccessIssue]
+                log_alpha = task_ids @ params["params"]["log_alpha"].reshape(-1, 1)  # pyright: ignore [reportAttributeAccessIssue]
                 return (
                     -log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)
                 ).mean()
 
             alpha_loss_value, alpha_grads = jax.value_and_grad(alpha_loss)(
-                _alpha.params, log_probs
+                _alpha.params
             )
             _alpha = _alpha.apply_gradients(grads=alpha_grads)
             alpha_vals = _alpha.apply_fn(_alpha.params, task_ids)
@@ -264,7 +269,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 task_weights,
                 {
                     "losses/alpha_loss": alpha_loss_value,
-                    "alpha": jnp.exp(_alpha.params).sum(),  # pyright: ignore [reportReturnType,reportArgumentType]
+                    "alpha": jnp.exp(_alpha.params["params"]["log_alpha"]).sum(),  # pyright: ignore [reportReturnType,reportArgumentType]
                 },
             )
 
@@ -282,7 +287,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             _alpha_val = jax.lax.stop_gradient(_alpha_val)
             if task_weights is not None:
                 task_weights = jax.lax.stop_gradient(task_weights)
-            _critic, critic_logs = update_critic(critic, _alpha_val, task_weights)
+            _critic, critic_logs = update_critic(self.critic, _alpha_val, task_weights)
             logs = {**alpha_logs, **critic_logs}
 
             q_values = _critic.apply_fn(

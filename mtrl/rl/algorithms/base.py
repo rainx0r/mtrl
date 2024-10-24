@@ -1,11 +1,11 @@
 import abc
-import time
+import wandb
 from collections import deque
 from typing import Deque, Generic, Self, TypeVar, override
-
 import numpy as np
+import time
+
 import orbax.checkpoint as ocp
-import wandb
 from flax import struct
 
 from mtrl.checkpoint import get_checkpoint_save_args, load_env_checkpoints

@@ -60,11 +60,13 @@ class RoutingNetworkLayer(nn.Module):
             use_bias=self.config.use_bias,
         )  # W_u^l
         # NOTE: 5
-        prob_output_dim = (
-            self.num_modules if self.last else self.num_modules * self.num_modules
+        self.prob_output_dim = (
+            self.config.num_modules
+            if self.last
+            else self.config.num_modules * self.config.num_modules
         )
         self.prob_output_fc = nn.Dense(
-            prob_output_dim,
+            self.prob_output_dim,
             kernel_init=uniform(1e-3),
             bias_init=jax.nn.initializers.zeros,
             use_bias=self.config.use_bias,
@@ -168,7 +170,7 @@ class SoftModularizationNetwork(nn.Module):
 
             # Post processing
             probs = probs.reshape(
-                probs.shape[:-1], self.config.num_modules * self.config.num_modules
+                *probs.shape[:-2], self.config.num_modules * self.config.num_modules
             )
             if weights is not None and self.routing_skip_connections:  # NOTE: 3
                 weights.append(probs)
