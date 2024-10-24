@@ -308,21 +308,21 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )(self.actor.params)
         actor = self.actor.apply_gradients(grads=actor_grads)
 
+        critic: CriticTrainState
+        critic = critic.replace(
+            target_params=optax.incremental_update(
+                critic.params,
+                critic.target_params,  # pyright: ignore [reportArgumentType]
+                self.tau,
+            )
+        )
+
         self = self.replace(
             key=key,
             actor=actor,
             critic=critic,
             alpha=alpha,
         )
-
-        qf_state = self.critic.replace(
-            target_params=optax.incremental_update(
-                self.critic.params,
-                self.critic.target_params,  # pyright: ignore [reportArgumentType]
-                self.tau,
-            )
-        )
-        self = self.replace(critic=qf_state)
 
         return (self, {**logs, "losses/actor_loss": actor_loss_value})
 

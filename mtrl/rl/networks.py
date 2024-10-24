@@ -44,7 +44,10 @@ class QValueFunction(nn.Module):
 
     @nn.compact
     def __call__(self, state: jax.Array, action: jax.Array) -> jax.Array:
-        x = jnp.concatenate((state, action), axis=-1)
+        # NOTE: certain NN architectures that make use of task IDs will be looking for them
+        # at the last N_TASKS dimensions of their input. So while normally concat(state,action) makes more sense
+        # we'll go with (action, state) here
+        x = jnp.concatenate((action, state), axis=-1)
 
         if not self.config.use_classification:
             return get_nn_arch_for_config(self.config.network_config)(
