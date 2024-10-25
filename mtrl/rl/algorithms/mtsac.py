@@ -2,7 +2,7 @@
 
 import dataclasses
 from functools import partial
-from typing import Self, override
+from typing import Self, override, Dict
 
 import gymnasium as gym
 import flax.linen as nn
@@ -82,6 +82,74 @@ def extract_task_weights(
     task_weights *= log_alpha.shape[0]  # NOTE 6
     return task_weights
 
+def get_critic_params(params):
+    critic1_params = {
+    'MultiHeadNetwork_0': {
+        'VmapDense_0': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['VmapDense_0']['bias'][0],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['VmapDense_0']['kernel'][0]
+        },
+        'layer_0': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_0']['bias'][0],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_0']['kernel'][0]
+        },
+        'layer_1': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_1']['bias'][0],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_1']['kernel'][0]
+            }
+        }
+    }
+
+    critic2_params = {
+    'MultiHeadNetwork_0': {
+        'VmapDense_0': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['VmapDense_0']['bias'][1],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['VmapDense_0']['kernel'][1]
+        },
+        'layer_0': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_0']['bias'][1],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_0']['kernel'][1]
+        },
+        'layer_1': {
+            'bias': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_1']['bias'][1],
+            'kernel': params['params']['VmapQValueFunction_0']['MultiHeadNetwork_0']['layer_1']['kernel'][1]
+        }
+        }
+    }
+    return critic1_params, critic2_params
+
+def get_dead_neuron_count(intermediate_act, dead_neuron_threshold=0.1):
+    all_layers_score = {}
+    dead_neurons = {}  # To store both mask and count for each layer
+
+    for act_key, act_value in intermediate_act.items():
+        act = act_value
+        neurons_score = jnp.mean(jnp.abs(act), axis=0)
+        neurons_score = neurons_score / (jnp.mean(neurons_score) + 1e-9)
+        all_layers_score[act_key] = neurons_score
+
+        mask = jnp.where(
+            neurons_score <= dead_neuron_threshold,
+            jnp.ones_like(neurons_score, dtype=jnp.int32),
+            jnp.zeros_like(neurons_score, dtype=jnp.int32)
+        )
+        num_dead_neurons = jnp.sum(mask)
+
+        dead_neurons[act_key] = {
+            'mask': mask,
+            'count': num_dead_neurons
+        }
+
+
+    total_dead_neurons = 0
+    total_hidden_count = 0
+    for layer_count, (layer_name, layer_score) in enumerate(all_layers_score.items()):
+        num_dead_neurons = dead_neurons[layer_name]['count']
+        total_dead_neurons += num_dead_neurons
+        total_hidden_count += layer_score.shape[0]
+
+    return np.array((total_dead_neurons / total_hidden_count) * 100)
+
 
 @dataclasses.dataclass(frozen=True)
 class MTSACConfig(AlgorithmConfig):
@@ -103,6 +171,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     tau: float = struct.field(pytree_node=False)
     target_entropy: float = struct.field(pytree_node=False)
     use_task_weights: bool = struct.field(pytree_node=False)
+
+    q_network = None
 
     @override
     @staticmethod
@@ -330,3 +400,55 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]:
         assert isinstance(data, ReplayBufferSamples), "MTSAC does not support rollouts"
         return self._update_inner(data)
+
+    @override
+    @partial(jax.jit, static_argnames=["q_network"])
+    def get_activations(self, data, q_network) -> tuple[Dict, Dict]:
+        key, critic_samp_key = jax.random.split(self.key, 2)
+
+        next_actions, _ = self.actor.apply_fn(
+            self.actor.params, data.next_observations
+        ).sample_and_log_prob(seed=critic_samp_key)
+
+        cr1, cr2 = get_critic_params(self.critic.params)
+        _, act1 = q_network.apply({'params':cr1}, data.next_observations, next_actions, capture_intermediates=True)
+        _, act2 = q_network.apply({'params':cr2}, data.next_observations, next_actions, capture_intermediates=True)
+
+
+        _, act_acts = self.actor.apply_fn(
+            self.actor.params, data.next_observations, capture_intermediates=True
+        )
+
+        self = self.replace(key=key)
+
+        return cr1, cr2, act_acts['intermediates']
+
+    @override
+    def get_metrics(self, data, config): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
+        metrics = dict()
+        q_network = QValueFunction(config=config.critic_config)
+ 
+        crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network)
+
+        network = actor_acts[list(actor_acts.keys())[0]]
+        layer0_act = network['layer_0']['__call__'][0]  # First layer
+        layer1_act = network['layer_1']['__call__'][0]  # Second layer
+        final_act = network['__call__'][0] 
+
+        intermediate_act = {'l1': layer0_act, 'l2': layer1_act, 'l3': final_act}
+        metrics['dead_neurons_actor'] = get_dead_neuron_count(intermediate_act)
+
+        dense0_acts = crit1_acts['MultiHeadNetwork_0']['VmapDense_0']
+        layer0_acts = crit1_acts['MultiHeadNetwork_0']['layer_0']
+        layer1_acts = crit1_acts['MultiHeadNetwork_0']['layer_1']
+        intermediate_act = {'l1': dense0_acts['kernel'], 'l2': layer0_acts['kernel'], 'l3': layer1_acts['kernel']}
+        metrics['dead_neurons_critic_1'] = get_dead_neuron_count(intermediate_act)
+
+        dense0_acts = crit2_acts['MultiHeadNetwork_0']['VmapDense_0']
+        layer0_acts = crit2_acts['MultiHeadNetwork_0']['layer_0']
+        layer1_acts = crit2_acts['MultiHeadNetwork_0']['layer_1'] 
+        intermediate_act = {'l1': dense0_acts['kernel'], 'l2': layer0_acts['kernel'], 'l3': layer1_acts['kernel']}
+        metrics['dead_neurons_critic_2'] = get_dead_neuron_count(intermediate_act)
+
+        return metrics
+

@@ -6,6 +6,7 @@ from .base import MLP as VanillaNetwork
 from .multi_head import MultiHeadNetwork
 from .soft_modules import SoftModularizationNetwork
 
+from functools import partial
 
 def get_nn_arch_for_config(
     config: mtrl.config.nn.NeuralNetworkConfig,

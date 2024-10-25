@@ -36,7 +36,7 @@ class Experiment:
     checkpoint: bool = True
     max_checkpoints_to_keep: int = 5
     best_checkpoint_metric: str = "charts/mean_success_rate"
-    resume: bool = True
+    resume: bool = False
 
     def __post_init__(self) -> None:
         self._wandb_enabled = False
@@ -58,6 +58,7 @@ class Experiment:
         checkpoint_manager = None
         checkpoint_metadata = None
         envs_checkpoint = None
+        print(self.checkpoint)
         if self.checkpoint:
             checkpoint_items = (
                 "agent",
@@ -78,6 +79,7 @@ class Experiment:
                 ),
             )
 
+            print(self.resume)
             if self.resume and checkpoint_manager.latest_step() is not None:
                 if is_off_policy:
                     assert isinstance(self.training_config, OffPolicyTrainingConfig)
@@ -116,4 +118,5 @@ class Experiment:
             checkpoint_manager=checkpoint_manager,
             checkpoint_metadata=checkpoint_metadata,
             buffer_checkpoint=buffer_checkpoint,
+            alg_config=self.algorithm,
         )

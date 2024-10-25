@@ -345,7 +345,7 @@ def _make_envs(
 @dataclass(frozen=True)
 class MetaworldConfig(EnvConfig):
     reward_func_version: str | None = None
-
+    num_eval_episodes: int = 50
     @cached_property
     @override
     def action_space(self) -> gym.Space:
@@ -426,7 +426,7 @@ class MetaworldConfig(EnvConfig):
     def evaluate(
         self, envs: gym.vector.VectorEnv, agent: Agent
     ) -> tuple[float, float, dict[str, float]]:
-        return _evaluation(agent, envs)
+        return _evaluation(agent, envs, num_episodes=self.num_eval_episodes)
 
     @override
     def spawn(self, seed: int = 1) -> gym.vector.VectorEnv:

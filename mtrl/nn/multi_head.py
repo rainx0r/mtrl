@@ -11,9 +11,7 @@ class MultiHeadNetwork(nn.Module):
     head_dim: int
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
-
     activate_last: bool = False
-
     # TODO: support variable width?
 
     @nn.compact

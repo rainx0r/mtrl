@@ -24,3 +24,6 @@ class QValueFunctionConfig:
 
     use_classification: bool = False
     """Whether or not to use classification instead of regression."""
+
+    capture_intermediate_activations: bool = False
+    """Whether or not to capture outputs of hidden layers"""
