@@ -3,6 +3,7 @@
 import dataclasses
 from functools import partial
 from typing import Self, override, Dict
+import copy
 
 import gymnasium as gym
 import flax.linen as nn
@@ -14,6 +15,8 @@ from flax.core import FrozenDict
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
 import optax
+import jax.flatten_util as fu
+
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
@@ -172,7 +175,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     target_entropy: float = struct.field(pytree_node=False)
     use_task_weights: bool = struct.field(pytree_node=False)
 
-    q_network = None
+    initial_actor: TrainState | None = None
+    initial_critic: CriticTrainState | None = None
 
     @override
     @staticmethod
@@ -244,7 +248,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             tau=config.tau,
             target_entropy=target_entropy,
             use_task_weights=config.use_task_weights,
+            initial_actor=actor,
+            initial_critic=critic
         )
+
+    @override
+    def get_initial_parameters(self,) -> tuple[Dict, Dict]:
+        return self.initial_actor, self.initial_critic
 
     @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:
@@ -304,9 +314,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 critic_loss, has_aux=True
             )(_critic.params)
             _critic = _critic.apply_gradients(grads=critic_grads)
+            flat_grads, _ = fu.ravel_pytree(critic_grads)
             return _critic, {
                 "losses/qf_values": qf_values,
                 "losses/qf_loss": critic_loss_value,
+                "critic_grad_magnitude": jnp.linalg.norm(flat_grads)
             }
 
         # --- Alpha loss ---
@@ -378,7 +390,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )(self.actor.params)
         actor = self.actor.apply_gradients(grads=actor_grads)
 
-        critic: CriticTrainState
+        flat_grads, _ = fu.ravel_pytree(actor_grads)
+        logs['actor_grad_mag'] = jnp.linalg.norm(flat_grads)
+
+        flat_params_act, _ = fu.ravel_pytree(self.actor.params)
+        logs['actor_params_norm'] = jnp.linalg.norm(flat_params_act)
+
+        flat_params_crit, _ = fu.ravel_pytree(self.critic.params)
+        logs['critic_params_norm'] = jnp.linalg.norm(flat_params_crit)
+
+        #critic: CriticTrainState
         critic = critic.replace(
             target_params=optax.incremental_update(
                 critic.params,
@@ -401,12 +422,23 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         assert isinstance(data, ReplayBufferSamples), "MTSAC does not support rollouts"
         return self._update_inner(data)
 
+    @jax.jit
+    def target_data(self, x): # this generates target data for the different models
+        q_values_mean_preds = self.critic.apply_fn(self.critic.params, x.next_observations, x.actions).mean(axis=0)
+        return q_values_mean_preds + jnp.sin(1e5 * self.critic.apply_fn(self.initial_critic.params, x.next_observations, x.actions))
+
+    @jax.jit
+    def mod_critic_loss(self, params: FrozenDict, data, target) -> Float[Array, ""]: # This is the MSE between the predicted q_values, and the generated data
+        q_pred = self.critic.apply_fn(params, data.observations, data.actions)
+        loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
+        return loss
+
     @override
-    @partial(jax.jit, static_argnames=["q_network"])
-    def get_activations(self, data, q_network) -> tuple[Dict, Dict]:
+    #@partial(jax.jit, static_argnames=["q_network"])
+    def get_activations(self, data, q_network, replay_buffer, batch_size) -> tuple[Dict, Dict]:
         key, critic_samp_key = jax.random.split(self.key, 2)
 
-        next_actions, _ = self.actor.apply_fn(
+        next_actions, next_actions_log_probs = self.actor.apply_fn(
             self.actor.params, data.next_observations
         ).sample_and_log_prob(seed=critic_samp_key)
 
@@ -414,21 +446,47 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         _, act1 = q_network.apply({'params':cr1}, data.next_observations, next_actions, capture_intermediates=True)
         _, act2 = q_network.apply({'params':cr2}, data.next_observations, next_actions, capture_intermediates=True)
 
-
         _, act_acts = self.actor.apply_fn(
             self.actor.params, data.next_observations, capture_intermediates=True
         )
 
-        self = self.replace(key=key)
+        q_values_mean_preds = self.critic.apply_fn(self.critic.params, data.next_observations, next_actions).mean(axis=0) # This generates alpha for plasticity
 
-        return cr1, cr2, act_acts['intermediates']
+        init_params = copy.deepcopy(self.initial_critic)
+        curr_params = copy.deepcopy(self.critic)
+
+        final_init_loss = None
+        final_curr_loss = None
+
+        for i in range(200):
+            data_sample = replay_buffer.sample(batch_size)
+            data_sample = self.target_data(data_sample)
+
+            critic_loss_value_init, critic_grads = jax.value_and_grad(
+                self.mod_critic_loss,
+            )(init_params.params, data, data_sample)
+            init_params = init_params.apply_gradients(grads=critic_grads)
+
+            critic_loss_value, critic_grads = jax.value_and_grad(
+                self.mod_critic_loss,
+            )(curr_params.params, data, data_sample)
+            curr_params = curr_params.apply_gradients(grads=critic_grads)
+
+            b = np.var(data_sample)
+
+            final_init_loss = b - critic_loss_value_init
+            final_crit_loss = b - critic_loss_value
+
+        self = self.replace(key=key)
+        return cr1, cr2, act_acts['intermediates'], {'plasticity_crit_loss': final_crit_loss, 'plasticity_init_loss': final_init_loss, 'plasticity': final_crit_loss - final_init_loss}
+
 
     @override
-    def get_metrics(self, data, config): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
+    def get_metrics(self, data, config, replay_buffer, batch_size): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
         metrics = dict()
         q_network = QValueFunction(config=config.critic_config)
  
-        crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network)
+        crit1_acts, crit2_acts, actor_acts, plasticities = self.get_activations(data, q_network, replay_buffer, batch_size)
 
         network = actor_acts[list(actor_acts.keys())[0]]
         layer0_act = network['layer_0']['__call__'][0]  # First layer
@@ -449,6 +507,17 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         layer1_acts = crit2_acts['MultiHeadNetwork_0']['layer_1'] 
         intermediate_act = {'l1': dense0_acts['kernel'], 'l2': layer0_acts['kernel'], 'l3': layer1_acts['kernel']}
         metrics['dead_neurons_critic_2'] = get_dead_neuron_count(intermediate_act)
+
+        metrics.update(plasticities)
+
+        '''
+        self,
+            data: ReplayBufferSamples,
+            _critic: CriticTrainState,
+            alpha_val: Float[Array, "batch 1"],
+            task_weights: Float[Array, "batch 1"] | None = None,
+        '''
+
 
         return metrics
 

@@ -57,6 +57,9 @@ class Algorithm(
     def get_activations(self,) -> Dict: ...
 
     @abc.abstractmethod
+    def get_initial_parameters(self, ) -> tuple[Dict, Dict, Dict]: ...
+
+    @abc.abstractmethod
     def train(
         self,
         config: TrainingConfigType,
@@ -202,7 +205,7 @@ class OffPolicyAlgorithm(
                     )
 
                     if compute_network_metrics:
-                        network_metrics = self.get_metrics(data, alg_config)
+                        network_metrics = self.get_metrics(data, alg_config, replay_buffer, config.batch_size)
 
                     if track:
                         wandb.log(eval_metrics, step=total_steps)
