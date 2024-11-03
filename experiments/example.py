@@ -29,7 +29,7 @@ def main() -> None:
     experiment = Experiment(
         exp_name=args.experiment_name,
         seed=args.seed,
-        data_dir=Path(f"./experiments/{args.experiment_name}"),
+        data_dir=Path(f"./experiment_results/{args.experiment_name}"),
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
