@@ -18,3 +18,14 @@ class OffPolicyTrainingConfig(TrainingConfig):
     warmstart_steps: int = int(4e3)
     buffer_size: int = int(1e6)
     batch_size: int = 1280
+
+
+@dataclass(frozen=True)
+class OnPolicyTrainingConfig(TrainingConfig):
+    rollout_steps: int = 10_000
+    num_epochs: int = 16
+    num_gradient_steps: int = 32
+
+    compute_advantages: bool = True
+    gae_lambda: float = 0.97
+    normalize_advantages: bool = True

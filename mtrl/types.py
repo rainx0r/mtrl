@@ -8,6 +8,7 @@ from jaxtyping import Float
 type LogDict = dict[str, float]
 
 Action = Float[np.ndarray, "... action_dim"]
+Value = Float[np.ndarray, "... 1"]
 LogProb = Float[np.ndarray, "... 1"]
 Observation = Float[np.ndarray, "... obs_dim"]
 
@@ -33,13 +34,12 @@ class Rollout(NamedTuple):
 
     # Auxiliary policy outputs
     log_probs: Float[LogProb, "task timestep"] | None = None
-    means: Float[np.ndarray, "task timestep 1"] | None = None
-    stds: Float[np.ndarray, "task timestep 1"] | None = None
+    means: Float[Action, "task timestep"] | None = None
+    stds: Float[Action, "task timestep"] | None = None
 
     # Computed statistics about observed rewards
     returns: Float[np.ndarray, "task timestep 1"] | None = None
     advantages: Float[np.ndarray, "task timestep 1"] | None = None
-    episode_returns: Float[np.ndarray, "task timestep 1"] | None = None
 
 
 class CheckpointMetadata(TypedDict):

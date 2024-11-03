@@ -1,15 +1,11 @@
-from collections.abc import Callable
-
 from jaxtyping import Float
 
 import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
-import scipy
 
 from mtrl.types import (
     Action,
-    LogProb,
     Observation,
     ReplayBufferCheckpoint,
     ReplayBufferSamples,
@@ -280,7 +276,7 @@ class MultiTaskRolloutBuffer:
         last_values: Float[npt.NDArray, " task"] | None = None,
         dones: Float[npt.NDArray, " task"] | None = None,
         gamma: float = 0.99,
-        gae_lambda: float = 0.95,
+        gae_lambda: float = 0.97,
     ) -> Rollout:
         if compute_advantages:
             assert (

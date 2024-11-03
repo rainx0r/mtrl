@@ -10,18 +10,25 @@ import wandb
 from flax import struct
 
 from mtrl.checkpoint import get_checkpoint_save_args
-from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig, TrainingConfig
+from mtrl.config.rl import (
+    AlgorithmConfig,
+    OnPolicyTrainingConfig,
+    OffPolicyTrainingConfig,
+    TrainingConfig,
+)
 from mtrl.envs import EnvConfig
-from mtrl.rl.buffers import MultiTaskReplayBuffer
+from mtrl.rl.buffers import MultiTaskReplayBuffer, MultiTaskRolloutBuffer
 from mtrl.types import (
     Action,
     Agent,
     CheckpointMetadata,
     LogDict,
+    LogProb,
     Observation,
     ReplayBufferCheckpoint,
     ReplayBufferSamples,
     Rollout,
+    Value,
 )
 
 AlgorithmConfigType = TypeVar("AlgorithmConfigType", bound=AlgorithmConfig)
@@ -216,4 +223,200 @@ class OffPolicyAlgorithm(
                             ),
                             metrics=eval_metrics,
                         )
+        return self
+
+
+class OnPolicyAlgorithm(
+    Algorithm[AlgorithmConfigType, OnPolicyTrainingConfig],
+    Generic[AlgorithmConfigType],
+):
+    @abc.abstractmethod
+    def sample_action_dist_and_value(
+        self, observation: Observation
+    ) -> tuple[Self, Action, LogProb, Action, Action, Value]: ...
+
+    def spawn_rollout_buffer(
+        self,
+        env_config: EnvConfig,
+        training_config: OnPolicyTrainingConfig,
+        seed: int | None = None,
+    ) -> MultiTaskRolloutBuffer:
+        return MultiTaskRolloutBuffer(
+            training_config.rollout_steps,
+            self.num_tasks,
+            env_config.observation_space,
+            env_config.action_space,
+            seed,
+        )
+
+    @override
+    def train(
+        self,
+        config: OnPolicyTrainingConfig,
+        envs: gym.vector.VectorEnv,
+        env_config: EnvConfig,
+        seed: int = 1,
+        track: bool = True,
+        checkpoint_manager: ocp.CheckpointManager | None = None,
+        checkpoint_metadata: CheckpointMetadata | None = None,
+        buffer_checkpoint: ReplayBufferCheckpoint | None = None,
+    ) -> Self:
+        global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
+        global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
+
+        obs, _ = envs.reset()
+
+        has_autoreset = np.full((envs.num_envs,), False)
+        start_step, episodes_ended = 0, 0
+
+        if checkpoint_metadata is not None:
+            start_step = checkpoint_metadata["step"]
+            episodes_ended = checkpoint_metadata["episodes"]
+
+        rollout_buffer = self.spawn_rollout_buffer(env_config, config, seed)
+        # TODO:
+        # if buffer_checkpoint is not None:
+        #     rollout_buffer.load_checkpoint(buffer_checkpoint)
+
+        start_time = time.time()
+
+        for global_step in range(start_step, config.total_steps // envs.num_envs):
+            total_steps = global_step * envs.num_envs
+
+            self, actions, log_probs, means, stds, values = (
+                self.sample_action_dist_and_value(obs)
+            )
+
+            next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+            rollout_buffer.add(
+                obs,
+                actions,
+                rewards,
+                terminations or truncations,
+                values,
+                log_probs,
+                means,
+                stds,
+            )
+
+            has_autoreset = np.logical_or(terminations, truncations)
+            for i, env_ended in enumerate(has_autoreset):
+                if env_ended:
+                    global_episodic_return.append(infos["episode"]["r"][i])
+                    global_episodic_length.append(infos["episode"]["l"][i])
+                    episodes_ended += 1
+
+            obs = next_obs
+
+            if global_step % 500 == 0 and global_episodic_return:
+                print(
+                    f"global_step={total_steps}, mean_episodic_return={np.mean(list(global_episodic_return))}"
+                )
+                if track:
+                    wandb.log(
+                        {
+                            "charts/mean_episodic_return": np.mean(
+                                list(global_episodic_return)
+                            ),
+                            "charts/mean_episodic_length": np.mean(
+                                list(global_episodic_length)
+                            ),
+                        },
+                        step=total_steps,
+                    )
+
+            # Logging
+            if global_step % 1_000 == 0:
+                sps_steps = (global_step - start_step) * envs.num_envs
+                sps = int(sps_steps / (time.time() - start_time))
+                print("SPS:", sps)
+
+                if track:
+                    wandb.log({"charts/SPS": sps}, step=total_steps)
+
+            if rollout_buffer.ready:
+                last_values = None
+                if config.compute_advantages:
+                    self, _, _, _, _, last_values = self.sample_action_dist_and_value(
+                        next_obs
+                    )
+
+                rollouts = rollout_buffer.get(
+                    config.compute_advantages, last_values, terminations or truncations
+                )
+
+                # Flatten batch dims
+                rollouts = Rollout(
+                    *map(lambda x: x.reshape(-1, x.shape[-1]) if x else None, rollouts)  # pyright: ignore[reportArgumentType]
+                )
+
+                rollout_size = rollouts.observations.shape[0]
+                minibatch_size = rollout_size // config.num_gradient_steps
+
+                logs = {}
+                batch_inds = np.arange(rollout_size)
+                for epoch in range(config.num_epochs):
+                    np.random.shuffle(batch_inds)
+                    for start in range(0, rollout_size, minibatch_size):
+                        end = start + minibatch_size
+                        minibatch_rollout = Rollout(
+                            *map(
+                                lambda x: x[batch_inds[start:end]] if x else None,  # pyright: ignore[reportArgumentType]
+                                rollouts,
+                            )
+                        )
+                        self, logs = self.update(minibatch_rollout)
+
+                rollout_buffer.reset()
+
+                if track:
+                    wandb.log(logs, step=total_steps)
+
+            # Evaluation
+            if (
+                config.evaluation_frequency > 0
+                and episodes_ended % config.evaluation_frequency == 0
+                and has_autoreset.any()
+                and global_step > 0
+            ):
+                mean_success_rate, mean_returns, mean_success_per_task = (
+                    env_config.evaluate(envs, self)
+                )
+                eval_metrics = {
+                    "charts/mean_success_rate": float(mean_success_rate),
+                    "charts/mean_evaluation_return": float(mean_returns),
+                } | {
+                    f"charts/{task_name}_success_rate": float(success_rate)
+                    for task_name, success_rate in mean_success_per_task.items()
+                }
+                print(
+                    f"total_steps={total_steps}, mean evaluation success rate: {mean_success_rate:.4f}"
+                    + f" return: {mean_returns:.4f}"
+                )
+
+                if track:
+                    wandb.log(eval_metrics, step=total_steps)
+
+                # Reset envs again to exit eval mode
+                obs, _ = envs.reset()
+
+                # Checkpointing
+                if checkpoint_manager is not None:
+                    if not has_autoreset.all():
+                        raise NotImplementedError(
+                            "Checkpointing currently doesn't work for the case where evaluation is run before all envs have finished their episodes / are about to be reset."
+                        )
+
+                    checkpoint_manager.save(
+                        total_steps,
+                        args=get_checkpoint_save_args(
+                            self,
+                            envs,
+                            global_step,
+                            episodes_ended,
+                            # buffer=replay_buffer, TODO:
+                        ),
+                        metrics=eval_metrics,
+                    )
+
         return self
