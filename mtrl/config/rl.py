@@ -28,4 +28,4 @@ class OnPolicyTrainingConfig(TrainingConfig):
 
     compute_advantages: bool = True
     gae_lambda: float = 0.97
-    normalize_advantages: bool = True
+    target_kl: float | None = None

@@ -367,6 +367,16 @@ class OnPolicyAlgorithm(
                         )
                         self, logs = self.update(minibatch_rollout)
 
+                    if config.target_kl is not None:
+                        assert (
+                            "losses/approx_kl" in logs
+                        ), "Algorithm did not provide approximate KL div, but approx_kl is not None."
+                        if logs["losses/approx_kl"] > config.target_kl:
+                            print(
+                                f"Stopped early at KL {logs['losses/approx_kl']}, ({epoch} epochs)"
+                            )
+                            break
+
                 rollout_buffer.reset()
 
                 if track:

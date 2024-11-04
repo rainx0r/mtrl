@@ -3,9 +3,9 @@ from typing import NamedTuple, TypedDict, Any, Protocol
 import numpy as np
 import numpy.typing as npt
 
-from jaxtyping import Float
+from jaxtyping import Float, Array
 
-type LogDict = dict[str, float]
+type LogDict = dict[str, float | Float[Array, ""]]
 
 Action = Float[np.ndarray, "... action_dim"]
 Value = Float[np.ndarray, "... 1"]

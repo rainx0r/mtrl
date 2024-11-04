@@ -78,8 +78,8 @@ class MTPPOConfig(AlgorithmConfig):
     clip_eps: float = 0.2
     clip_vf_loss: bool = True
     entropy_coefficient: float = 5e-3
-    vf_coefficient: float = 0.0
-    target_kl: float | None = None
+    vf_coefficient: float = 0.001
+    normalize_advantages: bool = True
 
 
 class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
@@ -91,7 +91,7 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
     clip_vf_loss: bool = struct.field(pytree_node=False)
     entropy_coefficient: float = struct.field(pytree_node=False)
     vf_coefficient: float = struct.field(pytree_node=False)
-    target_kl: float | None = struct.field(pytree_node=False)
+    normalize_advantages: bool = struct.field(pytree_node=False)
 
     @override
     @staticmethod
@@ -143,7 +143,7 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             clip_vf_loss=config.clip_vf_loss,
             entropy_coefficient=config.entropy_coefficient,
             vf_coefficient=config.vf_coefficient,
-            target_kl=config.target_kl,
+            normalize_advantages=config.normalize_advantages,
         )
 
     @override
@@ -179,17 +179,35 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             log_ratio = new_log_probs.reshape(-1, 1) - data.log_probs
             ratio = jnp.exp(log_ratio)
 
-            pg_loss1 = -data.advantages * ratio  # pyright: ignore[reportOptionalOperand]
-            pg_loss2 = -data.advantages * jax.lax.clamp(  # pyright: ignore[reportOptionalOperand]
-                1 - self.clip_eps, ratio, 1 + self.clip_eps
+            # For logs
+            approx_kl = jax.lax.stop_gradient(((ratio - 1) - log_ratio).mean())
+            clip_fracs = jax.lax.stop_gradient(
+                jnp.array(
+                    jnp.abs(ratio - 1.0) > self.clip_eps,
+                    dtype=jnp.float32,
+                ).mean()
+            )
+
+            if self.normalize_advantages:
+                advantages = (data.advantages - jnp.mean(data.advantages)) / (  # pyright: ignore[reportArgumentType]
+                    jnp.std(data.advantages) + 1e-8  # pyright: ignore[reportArgumentType]
+                )
+            else:
+                advantages = data.advantages
+
+            pg_loss1 = -advantages * ratio  # pyright: ignore[reportOptionalOperand]
+            pg_loss2 = -advantages * jnp.clip(  # pyright: ignore[reportOptionalOperand]
+                ratio, 1 - self.clip_eps, 1 + self.clip_eps
             )
 
             pg_loss = jnp.maximum(pg_loss1, pg_loss2).mean()
             entropy_loss = action_dist.entropy().mean()
 
             return pg_loss - self.entropy_coefficient * entropy_loss, {
-                "losses/entropy_loss": float(entropy_loss),
-                "losses/policy_loss": float(pg_loss),
+                "losses/entropy_loss": entropy_loss,
+                "losses/policy_loss": pg_loss,
+                "losses/approx_kl": approx_kl,
+                "losses/clip_fracs": clip_fracs,
             }
 
         (_, logs), policy_grads = jax.value_and_grad(policy_loss, has_aux=True)(
@@ -207,8 +225,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
 
             if self.clip_vf_loss:
                 vf_loss_unclipped = (new_values - data.returns) ** 2
-                v_clipped = data.values + jax.lax.clamp(
-                    -self.clip_eps, new_values - data.values, self.clip_eps
+                v_clipped = data.values + jnp.clip(
+                    new_values - data.values, -self.clip_eps, self.clip_eps
                 )
                 vf_loss_clipped = (v_clipped - data.returns) ** 2
                 vf_loss = 0.5 * jnp.maximum(vf_loss_unclipped, vf_loss_clipped).mean()
@@ -216,8 +234,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
                 vf_loss = 0.5 * ((new_values - data.returns) ** 2).mean()
 
             return self.vf_coefficient * vf_loss, {
-                "losses/value_function": float(vf_loss),
-                "losses/values": float(new_values.mean()),
+                "losses/value_function": vf_loss,
+                "losses/values": new_values.mean(),
             }
 
         (_, logs), vf_grads = jax.value_and_grad(value_function_loss, has_aux=True)(
