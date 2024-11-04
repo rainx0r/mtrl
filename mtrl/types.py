@@ -38,6 +38,7 @@ class Rollout(NamedTuple):
     stds: Float[Action, "task timestep"] | None = None
 
     # Computed statistics about observed rewards
+    values: Float[np.ndarray, "task timestep 1"] | None = None
     returns: Float[np.ndarray, "task timestep 1"] | None = None
     advantages: Float[np.ndarray, "task timestep 1"] | None = None
 

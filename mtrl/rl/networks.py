@@ -5,7 +5,11 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
+from mtrl.config.networks import (
+    ContinuousActionPolicyConfig,
+    QValueFunctionConfig,
+    ValueFunctionConfig,
+)
 from mtrl.nn import get_nn_arch_for_config
 from mtrl.nn.distributions import TanhMultivariateNormalDiag
 from mtrl.nn.initializers import uniform
@@ -56,6 +60,26 @@ class QValueFunction(nn.Module):
                 head_kernel_init=uniform(3e-3),
                 head_bias_init=uniform(3e-3),
             )(x)
+        else:
+            raise NotImplementedError(
+                "Value prediction as classification is not supported yet."
+            )
+
+
+class ValueFunction(nn.Module):
+    """A Flax module approximating a Q-Value function."""
+
+    config: ValueFunctionConfig
+
+    @nn.compact
+    def __call__(self, state: jax.Array) -> jax.Array:
+        if not self.config.use_classification:
+            return get_nn_arch_for_config(self.config.network_config)(
+                config=self.config.network_config,
+                head_dim=1,
+                head_kernel_init=uniform(3e-3),
+                head_bias_init=uniform(3e-3),
+            )(state)
         else:
             raise NotImplementedError(
                 "Value prediction as classification is not supported yet."

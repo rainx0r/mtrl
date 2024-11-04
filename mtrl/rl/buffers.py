@@ -323,6 +323,7 @@ class MultiTaskRolloutBuffer:
             self.log_probs,
             self.means,
             self.stds,
+            self.values,
             returns,
             advantages,
         )
