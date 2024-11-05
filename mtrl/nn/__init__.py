@@ -5,6 +5,7 @@ import flax.linen as nn
 from .base import MLP as VanillaNetwork
 from .multi_head import MultiHeadNetwork
 from .soft_modules import SoftModularizationNetwork
+from .paco import PaCoNetwork
 
 
 def get_nn_arch_for_config(
@@ -14,6 +15,8 @@ def get_nn_arch_for_config(
         return MultiHeadNetwork
     elif isinstance(config, mtrl.config.nn.SoftModulesConfig):
         return SoftModularizationNetwork
+    elif isinstance(config, mtrl.config.nn.PaCoConfig):
+        return PaCoNetwork
     elif isinstance(config, mtrl.config.nn.NeuralNetworkConfig):
         return VanillaNetwork
 
