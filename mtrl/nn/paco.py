@@ -2,9 +2,18 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from .base import MLP
-
 from mtrl.config.nn import PaCoConfig
+
+
+def CompositionalDense(num_parameter_sets: int):
+    return nn.vmap(
+        nn.Dense,
+        variable_axes={"params": 0},
+        split_rngs={"params": True, "dropout": True},
+        in_axes=None,  # pyright: ignore [reportArgumentType]
+        out_axes=-2,
+        axis_size=num_parameter_sets,
+    )
 
 
 class PaCoNetwork(nn.Module):
@@ -29,17 +38,7 @@ class PaCoNetwork(nn.Module):
         )(task_idx)
 
         for _ in range(self.config.depth):
-            x = nn.vmap(
-                nn.Dense,
-                variable_axes={"params": 0},
-                split_rngs={
-                    "params": True,
-                    "dropout": True,
-                },  # TODO: Check that init is different
-                in_axes=None,  # pyright: ignore [reportArgumentType]
-                out_axes=-2,
-                axis_size=self.config.num_parameter_sets,
-            )(
+            x = CompositionalDense(self.config.num_parameter_sets)(
                 self.config.width,
                 use_bias=self.config.use_bias,
                 kernel_init=self.config.kernel_init(),
@@ -48,17 +47,7 @@ class PaCoNetwork(nn.Module):
             x = jnp.einsum("bkn,bk->bn", x, w_tau)
             x = self.config.activation(x)
 
-        x = nn.vmap(
-            nn.Dense,
-            variable_axes={"params": 0},
-            split_rngs={
-                "params": True,
-                "dropout": True,
-            },  # TODO: Check that init is different
-            in_axes=None,  # pyright: ignore [reportArgumentType]
-            out_axes=-2,
-            axis_size=self.config.num_parameter_sets,
-        )(
+        x = CompositionalDense(self.config.num_parameter_sets)(
             self.head_dim,
             use_bias=self.config.use_bias,
             kernel_init=self.head_kernel_init,
