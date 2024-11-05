@@ -6,7 +6,7 @@ import numpy.typing as npt
 import scipy
 
 from mtrl.types import ReplayBufferCheckpoint, ReplayBufferSamples, Rollout
-
+from scipy.ndimage import gaussian_filter1d
 
 class MultiTaskReplayBuffer:
     """Replay buffer for the multi-task benchmarks.
@@ -33,6 +33,12 @@ class MultiTaskReplayBuffer:
         env_obs_space: gym.Space,
         env_action_space: gym.Space,
         seed: int | None = None,
+        max_steps : int = 500,
+        reward_filter: str | None = 'gaussian',
+        sigma: float | None = 3.0,
+        alpha: float | None = None,
+        delta: float | None = None,
+        filter_mode : str | None = 'nearest',
     ):
         assert (
             total_capacity % num_tasks == 0
@@ -43,9 +49,24 @@ class MultiTaskReplayBuffer:
         self._obs_shape = np.array(env_obs_space.shape).prod()
         self._action_shape = np.array(env_action_space.shape).prod()
         self.full = False
-        self.reset()  # Init buffer
 
-    def reset(self):
+
+        # all needed for reward smoothing --> Reggie's original idea about scale and smoothness mattering
+        self.max_steps = max_steps
+        self.reward_filter = reward_filter
+        self.sigma = sigma
+        self.alpha = alpha
+        self.delta = delta
+        self.filter_mode = filter_mode
+        self.current_trajectory_start = 0
+
+        if not self.reward_filter:
+            self.reset(save_rewards=False)  # Init buffer
+        else:
+            self.reset(save_rewards=True) # Init buffer saving original rewards
+
+
+    def reset(self, save_rewards=False):
         """Reinitialize the buffer."""
         self.obs = np.zeros(
             (self.capacity, self.num_tasks, self._obs_shape), dtype=np.float32
@@ -59,6 +80,10 @@ class MultiTaskReplayBuffer:
         )
         self.dones = np.zeros((self.capacity, self.num_tasks, 1), dtype=np.float32)
         self.pos = 0
+
+        if save_rewards:
+            self.org_rewards = np.zeros((self.capacity, self.num_tasks, 1), dtype=np.float32)
+            self.traj_start = 0
 
     def checkpoint(self) -> ReplayBufferCheckpoint:
         return {
@@ -95,15 +120,47 @@ class MultiTaskReplayBuffer:
         """Add a batch of samples to the buffer.
 
         It is assumed that the observation has a one-hot task embedding as its suffix.
+
+        # gaussian rewards = gaussian_filter1d(rewards_buffer, args.sigma, mode=args.filter_mode, axis=0)
+        # exponential
+        #           rewards = np.zeros_like(rewards_buffer)
+        #           rewards[-1, :] = rewards_buffer[0, :]
+        #           beta = 1 - args.alpha
+        #           for i, rew_raw in enumerate(rewards_buffer):
+        #               rewards[i, :] = args.alpha * rewards[i - 1, :] + beta * rew_raw
+
+        # uniform uniform  filter = (1.0 / args.delta) * np.array([1] * args.delta)
+
+        # uniform before   filter = (1.0/args.delta) * np.array([1] * args.delta + [0] * (args.delta-1))
+
+        # uniform after    filter = (1.0 / args.delta) * np.array([0] * (args.delta - 1) + [1] * args.delta)
+
+        # uniform generic application  rewards = convolve1d(rewards_buffer, filter, mode=args.filter_mode, axis=0)
         """
         # HACK: explicit task idx extraction
         task_idx = obs[:, -self.num_tasks :].argmax(1)
 
         self.obs[self.pos, task_idx] = obs.copy()
         self.actions[self.pos, task_idx] = action.copy()
-        self.rewards[self.pos, task_idx] = reward.copy().reshape(-1, 1)
         self.next_obs[self.pos, task_idx] = next_obs.copy()
         self.dones[self.pos, task_idx] = done.copy().reshape(-1, 1)
+
+        if not self.reward_filter:
+            self.rewards[self.pos, task_idx] = reward.reshape(-1, 1).copy()
+        else:
+            self.org_rewards[self.pos, task_idx] = reward.reshape(-1, 1).copy()
+
+        if self.reward_filter:
+            if self.reward_filter == 'gaussian':
+                window_size = int(self.sigma * 4)
+                current_version = self.pos % self.max_steps
+                version_start = self.pos - current_version
+                start = max(version_start, self.pos - window_size)
+                size = self.pos - start
+                if size > 1:
+                    self.rewards[self.pos, task_idx] = gaussian_filter1d(self.org_rewards[start:self.pos, :], sigma=self.sigma, mode=self.filter_mode)[-1, :].copy()
+                else:
+                    self.rewards[self.pos, task_idx] = reward.reshape(-1, 1).copy()
 
         self.pos = self.pos + 1
         if self.pos == self.capacity:

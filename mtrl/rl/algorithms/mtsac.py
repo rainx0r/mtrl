@@ -478,7 +478,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             final_crit_loss = b - critic_loss_value
 
         self = self.replace(key=key)
-        return cr1, cr2, act_acts['intermediates'], {'plasticity_crit_loss': final_crit_loss, 'plasticity_init_loss': final_init_loss, 'plasticity': final_crit_loss - final_init_loss}
+        return act1['intermediates'], act2['intermediates'], act_acts['intermediates'], {'plasticity_crit_loss': final_crit_loss, 'plasticity_init_loss': final_init_loss, 'plasticity': final_crit_loss - final_init_loss}
 
 
     @override
@@ -496,28 +496,36 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         intermediate_act = {'l1': layer0_act, 'l2': layer1_act, 'l3': final_act}
         metrics['dead_neurons_actor'] = get_dead_neuron_count(intermediate_act)
 
-        dense0_acts = crit1_acts['MultiHeadNetwork_0']['VmapDense_0']
-        layer0_acts = crit1_acts['MultiHeadNetwork_0']['layer_0']
-        layer1_acts = crit1_acts['MultiHeadNetwork_0']['layer_1']
-        intermediate_act = {'l1': dense0_acts['kernel'], 'l2': layer0_acts['kernel'], 'l3': layer1_acts['kernel']}
+
+        dense0_acts = crit1_acts['MultiHeadNetwork_0']['layer_0']['__call__'][0]
+        layer0_acts = crit1_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0]
+        intermediate_act = {'l1': dense0_acts, 'l2': layer0_acts}
         metrics['dead_neurons_critic_1'] = get_dead_neuron_count(intermediate_act)
 
-        dense0_acts = crit2_acts['MultiHeadNetwork_0']['VmapDense_0']
-        layer0_acts = crit2_acts['MultiHeadNetwork_0']['layer_0']
-        layer1_acts = crit2_acts['MultiHeadNetwork_0']['layer_1'] 
-        intermediate_act = {'l1': dense0_acts['kernel'], 'l2': layer0_acts['kernel'], 'l3': layer1_acts['kernel']}
+        dense0_acts = crit2_acts['MultiHeadNetwork_0']['layer_0']['__call__'][0]
+        layer0_acts = crit2_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0]
+        intermediate_act = {'l1': dense0_acts, 'l2': layer0_acts}
         metrics['dead_neurons_critic_2'] = get_dead_neuron_count(intermediate_act)
 
         metrics.update(plasticities)
 
-        '''
-        self,
-            data: ReplayBufferSamples,
-            _critic: CriticTrainState,
-            alpha_val: Float[Array, "batch 1"],
-            task_weights: Float[Array, "batch 1"] | None = None,
-        '''
-
+        metrics['srank_crit1'] = compute_srank(crit1_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0])
+        metrics['stank_crti2'] = compute_srank(crit2_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0])
 
         return metrics
 
+def compute_srank(feature_matrix, delta=0.01):
+    """Compute effective rank (srank) of a feature matrix.
+    Args:
+        feature_matrix: Matrix of shape [num_features, feature_dim]
+        delta: Threshold parameter (default: 0.01)
+    Returns:
+        Effective rank (srank) value
+    """
+    s = jnp.linalg.svd(feature_matrix, compute_uv=False)
+    cumsum = jnp.cumsum(s)
+    total = jnp.sum(s)
+    ratios = cumsum / total
+    mask = ratios >= (1.0 - delta)
+    srank = jnp.argmax(mask) + 1
+    return srank
