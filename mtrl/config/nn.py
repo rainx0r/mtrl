@@ -53,3 +53,12 @@ class SoftModulesConfig(NeuralNetworkConfig):
 
     embedding_dim: int = 400
     """The dimension of the observation / task index embedding. `D` in the paper."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class PaCoConfig(NeuralNetworkConfig):
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs)."""
+
+    num_parameter_sets: int = 5
+    """The number of parameter sets. `K` in the paper."""
