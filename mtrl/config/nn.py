@@ -62,3 +62,24 @@ class PaCoConfig(NeuralNetworkConfig):
 
     num_parameter_sets: int = 5
     """The number of parameter sets. `K` in the paper."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class CAREConfig(NeuralNetworkConfig):
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs)."""
+
+    encoder_width: int = 50
+    """The width of the Context Encoder network."""
+
+    encoder_depth: int = 2
+    """The depth of the Context Encoder network."""
+
+    encoder_temperature: float = 1.0
+    """The temperature of the encoder attention."""
+
+    embedding_dim: int = 50
+    """The dimensionality of the context embedding."""
+
+    num_experts: int = 4
+    """The number of experts in CARE's task-dependent MoE observation encoder."""

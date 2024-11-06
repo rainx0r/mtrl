@@ -1,22 +1,25 @@
-import mtrl.config.nn
-
 import flax.linen as nn
 
+import mtrl.config.nn
+
 from .base import MLP as VanillaNetwork
+from .care import CARENetwork
 from .multi_head import MultiHeadNetwork
-from .soft_modules import SoftModularizationNetwork
 from .paco import PaCoNetwork
+from .soft_modules import SoftModularizationNetwork
 
 
 def get_nn_arch_for_config(
     config: mtrl.config.nn.NeuralNetworkConfig,
 ) -> type[nn.Module]:
-    if isinstance(config, mtrl.config.nn.MultiHeadConfig):
+    if type(config) is mtrl.config.nn.MultiHeadConfig:
         return MultiHeadNetwork
-    elif isinstance(config, mtrl.config.nn.SoftModulesConfig):
+    elif type(config) is mtrl.config.nn.SoftModulesConfig:
         return SoftModularizationNetwork
-    elif isinstance(config, mtrl.config.nn.PaCoConfig):
+    elif type(config) is mtrl.config.nn.PaCoConfig:
         return PaCoNetwork
+    elif type(config) is mtrl.config.nn.CAREConfig:
+        return CARENetwork
     elif isinstance(config, mtrl.config.nn.NeuralNetworkConfig):
         return VanillaNetwork
 
