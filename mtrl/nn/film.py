@@ -3,13 +3,13 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from mtrl.config.nn import CAREConfig
+from mtrl.config.nn import FiLMConfig
 
 from .base import MLP
 
 
-class CARENetwork(nn.Module):
-    config: CAREConfig
+class FiLMNetwork(nn.Module):
+    config: FiLMConfig
 
     head_dim: int  # o, 1 for Q networks and 2 * action_dim for policy networks
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
@@ -21,7 +21,7 @@ class CARENetwork(nn.Module):
         task_idx = x[..., -self.config.num_tasks :]
         x = x[..., : -self.config.num_tasks]
 
-        # Encoder
+        # Task Encoder
         # TODO: This should be replaced with a pretrained NLP model eventually
         # for language description embeddings
         task_embedding = nn.Embed(
@@ -33,57 +33,46 @@ class CARENetwork(nn.Module):
             task_embedding, (*task_idx.shape[:-1], self.config.embedding_dim)
         )
         task_embedding = self.config.activation(task_embedding)
-        task_embedding = MLP(
-            width=self.config.encoder_width,
-            depth=self.config.encoder_depth,
-            head_dim=self.config.embedding_dim,
-            kernel_init=self.config.kernel_init(),
-            bias_init=self.config.bias_init(),
-            use_bias=self.config.use_bias,
-            activation_fn=self.config.activation,
-        )(task_embedding)
 
-        attention_weights = MLP(
+        film_gammas_and_betas = MLP(
             width=self.config.encoder_width,
             depth=self.config.encoder_depth,
-            head_dim=self.config.num_experts,
+            head_dim=2 * (self.config.encoder_depth + 1),
             kernel_init=self.config.kernel_init(),
             bias_init=self.config.bias_init(),
             use_bias=self.config.use_bias,
             activation_fn=self.config.activation,
         )(task_embedding)
+        # (batch_dims, num_encoder_layers + 1, 2, 1)
+        # gamma and beta for each encoder layer, scalar input to avoid weird broadcasting
+        film_gammas_and_betas = film_gammas_and_betas.reshape(
+            *film_gammas_and_betas.shape[:-1], (self.config.encoder_depth + 1), 2, 1
+        )
         chex.assert_shape(
-            attention_weights, (*task_idx.shape[:-1], self.config.num_experts)
-        )
-        attention_weights = jax.nn.softmax(
-            attention_weights / self.temperature, axis=-1
+            film_gammas_and_betas,
+            (*task_idx.shape[:-1], (self.config.encoder_depth + 1), 2, 1),
         )
 
-        moe_out = nn.vmap(
-            MLP,
-            variable_axes={"params": 0},
-            split_rngs={"params": True, "dropout": True},
-            in_axes=None,  # pyright: ignore [reportArgumentType]
-            out_axes=-2,
-            axis_size=self.config.num_experts,
-        )(
-            width=self.config.encoder_width,
-            depth=self.config.encoder_depth,
-            head_dim=self.config.embedding_dim,
+        # FiLM Obs encoder
+        for i in range(self.config.encoder_depth):
+            x = nn.Dense(
+                self.config.encoder_width,
+                kernel_init=self.config.kernel_init(),
+                bias_init=self.config.bias_init(),
+                use_bias=self.config.use_bias,
+            )(x)
+            x = self.config.activation(x)
+            x = x * film_gammas_and_betas[..., i, 0] + film_gammas_and_betas[..., i, 1]
+        x = nn.Dense(
+            self.config.embedding_dim,
             kernel_init=self.config.kernel_init(),
             bias_init=self.config.bias_init(),
             use_bias=self.config.use_bias,
-            activation_fn=self.config.activation,
-            name="moe_mlp",
         )(x)
-        chex.assert_shape(
-            moe_out, (self.config.num_experts, *x.shape[:-1], self.config.embedding_dim)
+        encoder_out = (
+            x * film_gammas_and_betas[..., -1, 0] + film_gammas_and_betas[..., -1, 1]
         )
 
-        encoder_out = jnp.einsum("bne,bn->be", moe_out, attention_weights)
-        chex.assert_shape(encoder_out, (*x.shape[:-1], self.config.embedding_dim))
-
-        # Main network forward pass
         torso_input = jnp.concatenate((encoder_out, task_embedding), axis=-1)
         chex.assert_shape(
             torso_input,

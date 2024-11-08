@@ -83,3 +83,18 @@ class CAREConfig(NeuralNetworkConfig):
 
     num_experts: int = 4
     """The number of experts in CARE's task-dependent MoE observation encoder."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class FiLMConfig(NeuralNetworkConfig):
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs)."""
+
+    encoder_width: int = 50
+    """The width of the Context Encoder network."""
+
+    encoder_depth: int = 2
+    """The depth of the Context Encoder network."""
+
+    embedding_dim: int = 50
+    """The dimensionality of the context embedding."""
