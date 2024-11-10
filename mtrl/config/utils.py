@@ -45,5 +45,5 @@ class Optimizer(enum.Enum):
     RMSProp = enum.member(optax.rmsprop)
     SGD = enum.member(optax.sgd)
 
-    def __call__(self, learning_rate: float):
-        return self.value(learning_rate)
+    def __call__(self, learning_rate: float, **kwargs):
+        return self.value(learning_rate, **kwargs)
