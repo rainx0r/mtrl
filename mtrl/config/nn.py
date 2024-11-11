@@ -98,3 +98,12 @@ class FiLMConfig(NeuralNetworkConfig):
 
     embedding_dim: int = 50
     """The dimensionality of the context embedding."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class MOOREConfig(NeuralNetworkConfig):
+    num_tasks: int
+    """The number of tasks (used for extracting the task IDs)."""
+
+    num_experts: int
+    """The number of orthogonal experts."""

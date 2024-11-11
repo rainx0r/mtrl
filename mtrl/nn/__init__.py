@@ -4,10 +4,11 @@ import mtrl.config.nn
 
 from .base import MLP as VanillaNetwork
 from .care import CARENetwork
+from .film import FiLMNetwork
+from .moore import MOORENetwork
 from .multi_head import MultiHeadNetwork
 from .paco import PaCoNetwork
 from .soft_modules import SoftModularizationNetwork
-from .film import FiLMNetwork
 
 
 def get_nn_arch_for_config(
@@ -23,6 +24,8 @@ def get_nn_arch_for_config(
         return CARENetwork
     elif type(config) is mtrl.config.nn.FiLMConfig:
         return FiLMNetwork
+    elif type(config) is mtrl.config.nn.MOOREConfig:
+        return MOORENetwork
     elif isinstance(config, mtrl.config.nn.NeuralNetworkConfig):
         return VanillaNetwork
 
