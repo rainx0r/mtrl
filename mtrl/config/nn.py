@@ -30,12 +30,10 @@ class NeuralNetworkConfig:
     optimizer: OptimizerConfig = OptimizerConfig()
     """The optimizer to use for the network."""
 
-
 @dataclass(frozen=True, kw_only=True)
 class MultiHeadConfig(NeuralNetworkConfig):
     num_tasks: int
     """The number of tasks (used for extracting the task IDs & to determine the number of heads)."""
-
 
 @dataclass(frozen=True, kw_only=True)
 class SoftModulesConfig(NeuralNetworkConfig):

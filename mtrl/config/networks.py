@@ -25,6 +25,5 @@ class QValueFunctionConfig:
     use_classification: bool = False
     """Whether or not to use classification instead of regression."""
 
-
 @dataclass(frozen=True)
 class ValueFunctionConfig(QValueFunctionConfig): ...

@@ -1,7 +1,7 @@
 import abc
 import time
 from collections import deque
-from typing import Deque, Generic, Self, TypeVar, override
+from typing import Deque, Generic, Self, TypeVar, override, Dict
 
 import gymnasium as gym
 import numpy as np
@@ -52,10 +52,19 @@ class Algorithm(
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
+    def get_metrics(self,) -> Dict: ...
+
+    @abc.abstractmethod
     def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
 
     @abc.abstractmethod
     def eval_action(self, observation: Observation) -> Action: ...
+
+    @abc.abstractmethod
+    def get_activations(self,) -> Dict: ...
+
+    @abc.abstractmethod
+    def get_initial_parameters(self, ) -> tuple[Dict, Dict, Dict]: ...
 
     @abc.abstractmethod
     def train(
@@ -68,6 +77,7 @@ class Algorithm(
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
+        alg_config = None
     ) -> Self: ...
 
 
@@ -94,9 +104,11 @@ class OffPolicyAlgorithm(
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
+        compute_network_metrics: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
+        alg_config = None,
     ) -> Self:
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
@@ -199,8 +211,12 @@ class OffPolicyAlgorithm(
                         + f" return: {mean_returns:.4f}"
                     )
 
+                    if compute_network_metrics:
+                        network_metrics = self.get_metrics(data, alg_config)
+
                     if track:
                         wandb.log(eval_metrics, step=total_steps)
+                        wandb.log(network_metrics, step=total_steps)
 
                     # Reset envs again to exit eval mode
                     obs, _ = envs.reset()
@@ -381,7 +397,7 @@ class OnPolicyAlgorithm(
 
                 if track:
                     wandb.log(logs, step=total_steps)
-
+                    wandb.log(metrics, step=total_steps)
             # Evaluation
             if (
                 config.evaluation_frequency > 0
@@ -404,8 +420,11 @@ class OnPolicyAlgorithm(
                     + f" return: {mean_returns:.4f}"
                 )
 
+                metrics = self.get_metrics()
+
                 if track:
                     wandb.log(eval_metrics, step=total_steps)
+                    wandb.log(metrics, step=total_steps)
 
                 # Reset envs again to exit eval mode
                 obs, _ = envs.reset()

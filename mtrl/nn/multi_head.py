@@ -4,6 +4,7 @@ import jax.numpy as jnp
 
 from mtrl.config.nn import MultiHeadConfig
 
+from mtrl.nn.regularizers import *
 
 class MultiHeadNetwork(nn.Module):
     config: MultiHeadConfig
@@ -11,8 +12,8 @@ class MultiHeadNetwork(nn.Module):
     head_dim: int
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
-
     activate_last: bool = False
+    normalize_layer: bool = False
 
     # TODO: support variable width?
 
@@ -26,6 +27,8 @@ class MultiHeadNetwork(nn.Module):
         task_idx = x[..., -self.config.num_tasks :]
 
         for i in range(self.config.depth):
+            if self.normalize_layer and i == 0:
+                x = L2Normalize()(x)
             x = nn.Dense(
                 self.config.width,
                 name=f"layer_{i}",

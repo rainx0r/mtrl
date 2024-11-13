@@ -2,7 +2,8 @@
 
 import dataclasses
 from functools import partial
-from typing import Self, override
+from typing import Self, override, Dict
+import copy
 
 import gymnasium as gym
 import flax.linen as nn
@@ -14,6 +15,8 @@ from flax.core import FrozenDict
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
 import optax
+import jax.flatten_util as fu
+
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
@@ -29,6 +32,8 @@ from mtrl.types import (
 )
 
 from .base import OffPolicyAlgorithm
+
+from mtrl.metrics import *
 
 
 class MultiTaskTemperature(nn.Module):
@@ -104,6 +109,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     target_entropy: float = struct.field(pytree_node=False)
     use_task_weights: bool = struct.field(pytree_node=False)
 
+    initial_actor: TrainState | None = None
+    initial_critic: CriticTrainState | None = None
+
     @override
     @staticmethod
     def initialize(
@@ -174,7 +182,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             tau=config.tau,
             target_entropy=target_entropy,
             use_task_weights=config.use_task_weights,
+            initial_actor=actor,
+            initial_critic=critic
         )
+
+    @override
+    def get_initial_parameters(self,) -> tuple[Dict, Dict]:
+        return self.initial_actor, self.initial_critic
 
     @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:
@@ -234,9 +248,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 critic_loss, has_aux=True
             )(_critic.params)
             _critic = _critic.apply_gradients(grads=critic_grads)
+            flat_grads, _ = fu.ravel_pytree(critic_grads)
             return _critic, {
                 "losses/qf_values": qf_values,
                 "losses/qf_loss": critic_loss_value,
+                "critic_grad_magnitude": jnp.linalg.norm(flat_grads)
             }
 
         # --- Alpha loss ---
@@ -308,7 +324,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )(self.actor.params)
         actor = self.actor.apply_gradients(grads=actor_grads)
 
-        critic: CriticTrainState
+        flat_grads, _ = fu.ravel_pytree(actor_grads)
+        logs['actor_grad_mag'] = jnp.linalg.norm(flat_grads)
+
+        flat_params_act, _ = fu.ravel_pytree(self.actor.params)
+        logs['actor_params_norm'] = jnp.linalg.norm(flat_params_act)
+
+        flat_params_crit, _ = fu.ravel_pytree(self.critic.params)
+        logs['critic_params_norm'] = jnp.linalg.norm(flat_params_crit)
+
+        #critic: CriticTrainState
         critic = critic.replace(
             target_params=optax.incremental_update(
                 critic.params,
@@ -330,3 +355,147 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]:
         assert isinstance(data, ReplayBufferSamples), "MTSAC does not support rollouts"
         return self._update_inner(data)
+
+    @jax.jit
+    def target_data(self, x): # this generates target data for the different models
+        q_values_mean_preds = self.critic.apply_fn(self.critic.params, x.next_observations, x.actions).mean(axis=0)
+        return q_values_mean_preds + jnp.sin(1e5 * self.critic.apply_fn(self.initial_critic.params, x.next_observations, x.actions))
+
+    @jax.jit
+    def mod_critic_loss(self, params: FrozenDict, data, target) -> Float[Array, ""]: # This is the MSE between the predicted q_values, and the generated data
+        q_pred = self.critic.apply_fn(params, data.observations, data.actions)
+        loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
+        return loss
+
+    @override
+    def get_activations(self, data, q_network):
+        key, critic_samp_key = jax.random.split(self.key, 2)
+
+        next_actions, next_actions_log_probs = self.actor.apply_fn(
+            self.actor.params, data.next_observations
+        ).sample_and_log_prob(seed=critic_samp_key)
+
+        cr1 = extract_params_at_index(self.critic.params, 0)
+        cr2 = extract_params_at_index(self.critic.params, 1)
+
+        _, act1 = q_network.apply({'params':cr1}, data.next_observations, next_actions, capture_intermediates=True)
+        _, act2 = q_network.apply({'params':cr2}, data.next_observations, next_actions, capture_intermediates=True)
+
+        _, act_acts = self.actor.apply_fn(
+            self.actor.params, data.next_observations, capture_intermediates=True
+        )
+
+        self = self.replace(key=key)
+        return act1['intermediates'], act2['intermediates'], act_acts['intermediates']
+
+
+    @override
+    def get_metrics(self, data, config): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
+        metrics = dict()
+        q_network = QValueFunction(config=config.critic_config) 
+
+        crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network)
+
+        cr1acts = extract_activations(crit1_acts)
+        metrics['dead_neurons_critic_1'] = get_dead_neuron_count(cr1acts)
+
+        cr2acts = extract_activations(crit2_acts)
+        metrics['dead_neurons_critic_2'] = get_dead_neuron_count(cr2acts)
+
+        acts = extract_activations(actor_acts)
+        if 'final' in acts:
+            del acts['final']
+        metrics['dead_neurons_actor'] = get_dead_neuron_count(acts)
+
+        for key,value in cr1acts.items():
+            metrics['srank_critic_1_' + key] = compute_srank(value)
+        for key, value in cr2acts.items():
+            metrics['srank_critic_2_' + key] = compute_srank(value)
+        for key, value in acts.items():
+            metrics['srank_actor_' + key] = compute_srank(value)
+
+        return metrics
+
+
+def compute_srank(feature_matrix, delta=0.01):
+    """Compute effective rank (srank) of a feature matrix.
+    Args:
+        feature_matrix: Matrix of shape [num_features, feature_dim]
+        delta: Threshold parameter (default: 0.01)
+    Returns:
+        Effective rank (srank) value
+    """
+    s = jnp.linalg.svd(feature_matrix, compute_uv=False)
+    cumsum = jnp.cumsum(s)
+    total = jnp.sum(s)
+    ratios = cumsum / total
+    mask = ratios >= (1.0 - delta)
+    srank = jnp.argmax(mask) + 1
+    return srank
+
+
+def return_net_layers(config):
+    if isinstance(config.actor_config.network_config, SoftModulesConfig):
+        return 'SoftModularizationNetwork_0', 'f', 'layers_0', 'layers_1'
+
+
+def extract_params_at_index(params_dict, index):
+    def recursive_extract(d):
+        if isinstance(d, dict):
+            return {k: recursive_extract(v) for k, v in d.items()}
+        else:
+            return d[index]
+    # Extract only the relevant part of the params dictionary
+    network_params = params_dict['params']['VmapQValueFunction_0']
+    return recursive_extract(network_params)
+
+
+def extract_activations(network_dict, activation_key='__call__'):
+    def recursive_extract(d, current_path=[]):
+        activations = {}
+        if isinstance(d, dict):
+            # If this dictionary has '__call__', store its activation
+            if activation_key in d:
+                layer_name = '_'.join(current_path) if current_path else 'final'
+                activations[layer_name] = d[activation_key][0]
+            # Recurse through other keys
+            for k, v in d.items():
+                if k != activation_key:  # Skip '__call__' in recursion
+                    sub_activations = recursive_extract(v, current_path + [k])
+                    activations.update(sub_activations)
+        return activations
+
+    return recursive_extract(network_dict)
+
+
+def get_dead_neuron_count(intermediate_act, dead_neuron_threshold=0.1):
+    all_layers_score = {}
+    dead_neurons = {}  # To store both mask and count for each layer
+
+    for act_key, act_value in intermediate_act.items():
+        act = act_value
+        neurons_score = jnp.mean(jnp.abs(act), axis=0)
+        neurons_score = neurons_score / (jnp.mean(neurons_score) + 1e-9)
+        all_layers_score[act_key] = neurons_score
+
+        mask = jnp.where(
+            neurons_score <= dead_neuron_threshold,
+            jnp.ones_like(neurons_score, dtype=jnp.int32),
+            jnp.zeros_like(neurons_score, dtype=jnp.int32)
+        )
+        num_dead_neurons = jnp.sum(mask)
+
+        dead_neurons[act_key] = {
+            'mask': mask,
+            'count': num_dead_neurons
+        }
+
+
+    total_dead_neurons = 0
+    total_hidden_count = 0
+    for layer_count, (layer_name, layer_score) in enumerate(all_layers_score.items()):
+        num_dead_neurons = dead_neurons[layer_name]['count']
+        total_dead_neurons += num_dead_neurons
+        total_hidden_count += layer_score.shape[0]
+
+    return np.array((total_dead_neurons / total_hidden_count) * 100)

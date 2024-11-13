@@ -10,18 +10,18 @@ import metaworld
 import metaworld.types
 import numpy as np
 import numpy.typing as npt
-from metaworld.envs.mujoco.env_dict import ALL_V2_ENVIRONMENTS
-from metaworld.envs.mujoco.sawyer_xyz import SawyerXYZEnv
+from metaworld.env_dict import ALL_V3_ENVIRONMENTS
+from metaworld.sawyer_xyz_env import SawyerXYZEnv
 
 from mtrl.types import Agent
 
 from .base import EnvConfig
+from metaworld.evaluation import evaluation
 
-
-def _get_task_names(
+'''def _get_task_names(
     envs: gym.vector.VectorEnv,
 ) -> list[str]:
-    metaworld_cls_to_task_name = {v.__name__: k for k, v in ALL_V2_ENVIRONMENTS.items()}
+    metaworld_cls_to_task_name = {v.__name__: k for k, v in ALL_V3_ENVIRONMENTS.items()}
     return [
         metaworld_cls_to_task_name[task_name]
         for task_name in envs.get_attr("task_name")
@@ -340,12 +340,12 @@ def _make_envs(
             for env_id, (name, env_cls) in enumerate(benchmark.train_classes.items())
         ],
     )
-
+'''
 
 @dataclass(frozen=True)
 class MetaworldConfig(EnvConfig):
     reward_func_version: str | None = None
-
+    num_eval_episodes: int = 50
     @cached_property
     @override
     def action_space(self) -> gym.Space:
@@ -426,11 +426,13 @@ class MetaworldConfig(EnvConfig):
     def evaluate(
         self, envs: gym.vector.VectorEnv, agent: Agent
     ) -> tuple[float, float, dict[str, float]]:
-        return _evaluation(agent, envs)
+        return evaluation(agent, envs, num_episodes=self.num_eval_episodes)
 
     @override
     def spawn(self, seed: int = 1) -> gym.vector.VectorEnv:
-        if self.env_id == "MT10":
+        return gym.make_vec(f"Meta-World/{self.env_id}", seed=seed, use_one_hot=self.use_one_hot, terminate_on_success=self.terminate_on_success, vector_strategy='async')  # , reward_function_version=self.reward_func_version)
+
+'''        if self.env_id == "MT10":
             benchmark = metaworld.MT10(seed=seed)
         elif self.env_id == "MT50":
             benchmark = metaworld.MT50(seed=seed)
@@ -444,3 +446,4 @@ class MetaworldConfig(EnvConfig):
             terminate_on_success=self.terminate_on_success,
             reward_func_version=self.reward_func_version,
         )
+'''
