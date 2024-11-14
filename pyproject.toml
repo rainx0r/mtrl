@@ -10,7 +10,7 @@ dependencies = [
     "gymnasium>=1.0.0",
     "jax[cuda12]>=0.4.34",
     "jaxtyping>=0.2.34",
-    "metaworld @ git+https://github.com/rainx0r/Metaworld.git@d0c2674e033aa90f2e68ea127661d67f5e1c680d",
+    "metaworld @ git+https://github.com/reginald-mclean/Metaworld.git@6f4a19f345289bda57f4ac3fc857669cb69722ff",
     "numpy>=2.1.2",
     "orbax-checkpoint>=0.7.0",
     "tyro>=0.8.11",
@@ -22,7 +22,7 @@ ignore = ["F722"]
 ignore-init-module-imports = true
 
 [tool.uv.sources]
-metaworld = { git = "https://github.com/rainx0r/Metaworld.git", rev = "speedup" }
+metaworld = { git = "https://github.com/reginald-mclean/Metaworld.git", rev = "release" }
 
 [tool.setuptools]
 packages = ["mtrl"]
