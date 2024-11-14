@@ -62,7 +62,10 @@ class FiLMNetwork(nn.Module):
                 use_bias=self.config.use_bias,
             )(x)
             x = self.config.activation(x)
-            x = x * film_gammas_and_betas[..., i, 0] + film_gammas_and_betas[..., i, 1]
+            x = (
+                x * film_gammas_and_betas[..., i, 0, :]
+                + film_gammas_and_betas[..., i, 1, :]
+            )
         x = nn.Dense(
             self.config.embedding_dim,
             kernel_init=self.config.kernel_init(),
@@ -70,7 +73,8 @@ class FiLMNetwork(nn.Module):
             use_bias=self.config.use_bias,
         )(x)
         encoder_out = (
-            x * film_gammas_and_betas[..., -1, 0] + film_gammas_and_betas[..., -1, 1]
+            x * film_gammas_and_betas[..., -1, 0, :]
+            + film_gammas_and_betas[..., -1, 1, :]
         )
 
         torso_input = jnp.concatenate((encoder_out, task_embedding), axis=-1)

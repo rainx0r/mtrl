@@ -18,6 +18,7 @@ from mtrl.envs import EnvConfig
 from mtrl.rl.networks import ContinuousActionPolicy, ValueFunction
 from mtrl.types import (
     Action,
+    AuxPolicyOutputs,
     LogDict,
     LogProb,
     Observation,
@@ -164,8 +165,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         )
 
     @override
-    def eval_action(self, observation: Observation) -> Action:
-        return jax.device_get(_eval_action(self.policy, observation))
+    def eval_action(self, observation: Observation) -> tuple[Action, AuxPolicyOutputs]:
+        return jax.device_get(_eval_action(self.policy, observation)), {}
 
     def update_policy(self, data: Rollout) -> tuple[Self, LogDict]:
         key, policy_loss_key = jax.random.split(self.key, 2)
@@ -262,13 +263,25 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         assert data.advantages is not None, "GAE must be enabled for MTPPO."
         assert data.returns is not None, "Returns must be computed for MTPPO."
         return self._update_inner(data)
-    @jax.jit
-    def target_data(self, x): # this generates target data for the different models
-        q_values_mean_preds = self.critic.apply_fn(self.critic.params, x.next_observations, x.actions).mean(axis=0)
-        return q_values_mean_preds + jnp.sin(1e5 * self.critic.apply_fn(self.initial_critic.params, x.next_observations, x.actions))
 
     @jax.jit
-    def mod_critic_loss(self, params: FrozenDict, data, target) -> Float[Array, ""]: # This is the MSE between the predicted q_values, and the generated data
+    def target_data(self, x):  # this generates target data for the different models
+        q_values_mean_preds = self.critic.apply_fn(
+            self.critic.params, x.next_observations, x.actions
+        ).mean(axis=0)
+        return q_values_mean_preds + jnp.sin(
+            1e5
+            * self.critic.apply_fn(
+                self.initial_critic.params, x.next_observations, x.actions
+            )
+        )
+
+    @jax.jit
+    def mod_critic_loss(
+        self, params: FrozenDict, data, target
+    ) -> Float[
+        Array, ""
+    ]:  # This is the MSE between the predicted q_values, and the generated data
         q_pred = self.critic.apply_fn(params, data.observations, data.actions)
         loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
         return loss
@@ -282,51 +295,68 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         ).sample_and_log_prob(seed=critic_samp_key)
 
         cr1, cr2 = get_critic_params(self.critic.params)
-        _, act1 = q_network.apply({'params':cr1}, data.next_observations, next_actions, capture_intermediates=True)
-        _, act2 = q_network.apply({'params':cr2}, data.next_observations, next_actions, capture_intermediates=True)
+        _, act1 = q_network.apply(
+            {"params": cr1},
+            data.next_observations,
+            next_actions,
+            capture_intermediates=True,
+        )
+        _, act2 = q_network.apply(
+            {"params": cr2},
+            data.next_observations,
+            next_actions,
+            capture_intermediates=True,
+        )
 
         _, act_acts = self.actor.apply_fn(
             self.actor.params, data.next_observations, capture_intermediates=True
         )
 
         self = self.replace(key=key)
-        return act1['intermediates'], act2['intermediates'], act_acts['intermediates']
+        return act1["intermediates"], act2["intermediates"], act_acts["intermediates"]
 
     @override
-    def get_metrics(self, data, config, replay_buffer, batch_size): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
+    def get_metrics(
+        self, data, config, replay_buffer, batch_size
+    ):  # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
         metrics = dict()
         q_network = QValueFunction(config=config.critic_config)
- 
-        crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network, replay_buffer, batch_size)
+
+        crit1_acts, crit2_acts, actor_acts = self.get_activations(
+            data, q_network, replay_buffer, batch_size
+        )
 
         network = actor_acts[list(actor_acts.keys())[0]]
-        layer0_act = network['layer_0']['__call__'][0]  # First layer
-        layer1_act = network['layer_1']['__call__'][0]  # Second layer
-        final_act = network['__call__'][0]
+        layer0_act = network["layer_0"]["__call__"][0]  # First layer
+        layer1_act = network["layer_1"]["__call__"][0]  # Second layer
+        final_act = network["__call__"][0]
 
-        intermediate_act = {'l1': layer0_act, 'l2': layer1_act, 'l3': final_act}
-        metrics['dead_neurons_actor'] = get_dead_neuron_count(intermediate_act)
+        intermediate_act = {"l1": layer0_act, "l2": layer1_act, "l3": final_act}
+        metrics["dead_neurons_actor"] = get_dead_neuron_count(intermediate_act)
 
+        dense0_acts = crit1_acts["MultiHeadNetwork_0"]["layer_0"]["__call__"][0]
+        layer0_acts = crit1_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
+        intermediate_act = {"l1": dense0_acts, "l2": layer0_acts}
+        metrics["dead_neurons_critic_1"] = get_dead_neuron_count(intermediate_act)
 
-        dense0_acts = crit1_acts['MultiHeadNetwork_0']['layer_0']['__call__'][0]
-        layer0_acts = crit1_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0]
-        intermediate_act = {'l1': dense0_acts, 'l2': layer0_acts}
-        metrics['dead_neurons_critic_1'] = get_dead_neuron_count(intermediate_act)
+        dense0_acts = crit2_acts["MultiHeadNetwork_0"]["layer_0"]["__call__"][0]
+        layer0_acts = crit2_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
+        intermediate_act = {"l1": dense0_acts, "l2": layer0_acts}
+        metrics["dead_neurons_critic_2"] = get_dead_neuron_count(intermediate_act)
 
-        dense0_acts = crit2_acts['MultiHeadNetwork_0']['layer_0']['__call__'][0]
-        layer0_acts = crit2_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0]
-        intermediate_act = {'l1': dense0_acts, 'l2': layer0_acts}
-        metrics['dead_neurons_critic_2'] = get_dead_neuron_count(intermediate_act)
-
-        metrics['srank_crit1'] = compute_srank(crit1_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0])
-        metrics['srank_crti2'] = compute_srank(crit2_acts['MultiHeadNetwork_0']['layer_1']['__call__'][0])
-
+        metrics["srank_crit1"] = compute_srank(
+            crit1_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
+        )
+        metrics["srank_crti2"] = compute_srank(
+            crit2_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
+        )
 
         print(layer0_act.shape, layer1_act.shape, final_act.shape)
         exit(0)
-        #metrics['srank_actor'] = compute_srank(actor_acts[list(actor_acts.keys())[0]
+        # metrics['srank_actor'] = compute_srank(actor_acts[list(actor_acts.keys())[0]
 
         return metrics
+
 
 def compute_srank(feature_matrix, delta=0.01):
     """Compute effective rank (srank) of a feature matrix.

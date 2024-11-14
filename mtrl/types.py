@@ -11,10 +11,13 @@ Action = Float[np.ndarray, "... action_dim"]
 Value = Float[np.ndarray, "... 1"]
 LogProb = Float[np.ndarray, "... 1"]
 Observation = Float[np.ndarray, "... obs_dim"]
+AuxPolicyOutputs = dict[str, npt.NDArray]
 
 
 class Agent(Protocol):
-    def eval_action(self, observation: Observation) -> Action: ...
+    def eval_action(
+        self, observation: npt.NDArray[np.float64]
+    ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray]]: ...
 
 
 class ReplayBufferSamples(NamedTuple):

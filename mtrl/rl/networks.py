@@ -21,6 +21,7 @@ class ContinuousActionPolicy(nn.Module):
     action_dim: int
     config: ContinuousActionPolicyConfig
     last_act = None
+
     @nn.compact
     def __call__(self, x: jax.Array) -> distrax.Distribution:
         x = get_nn_arch_for_config(self.config.network_config)(

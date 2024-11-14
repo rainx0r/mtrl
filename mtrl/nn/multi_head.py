@@ -3,8 +3,8 @@ import jax
 import jax.numpy as jnp
 
 from mtrl.config.nn import MultiHeadConfig
+from mtrl.nn.regularizers import L2Normalize
 
-from mtrl.nn.regularizers import *
 
 class MultiHeadNetwork(nn.Module):
     config: MultiHeadConfig

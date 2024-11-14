@@ -13,6 +13,7 @@ from mtrl.types import (
 )
 from scipy.ndimage import gaussian_filter1d
 
+
 class MultiTaskReplayBuffer:
     """Replay buffer for the multi-task benchmarks.
 
@@ -34,12 +35,12 @@ class MultiTaskReplayBuffer:
         env_obs_space: gym.Space,
         env_action_space: gym.Space,
         seed: int | None = None,
-        max_steps : int = 500,
+        max_steps: int = 500,
         reward_filter: str | None = None,
         sigma: float | None = None,
         alpha: float | None = None,
         delta: float | None = None,
-        filter_mode : str | None = None,
+        filter_mode: str | None = None,
     ) -> None:
         assert (
             total_capacity % num_tasks == 0
@@ -63,8 +64,7 @@ class MultiTaskReplayBuffer:
         if not self.reward_filter:
             self.reset(save_rewards=False)  # Init buffer
         else:
-            self.reset(save_rewards=True) # Init buffer saving original rewards
-
+            self.reset(save_rewards=True)  # Init buffer saving original rewards
 
     def reset(self, save_rewards=False):
         """Reinitialize the buffer."""
@@ -82,7 +82,9 @@ class MultiTaskReplayBuffer:
         self.pos = 0
 
         if save_rewards:
-            self.org_rewards = np.zeros((self.capacity, self.num_tasks, 1), dtype=np.float32)
+            self.org_rewards = np.zeros(
+                (self.capacity, self.num_tasks, 1), dtype=np.float32
+            )
             self.traj_start = 0
 
     def checkpoint(self) -> ReplayBufferCheckpoint:
@@ -162,14 +164,19 @@ class MultiTaskReplayBuffer:
             self.org_rewards[self.pos] = reward.reshape(-1, 1).copy()
 
         if self.reward_filter:
-            if self.reward_filter == 'gaussian':
+            if self.reward_filter == "gaussian":
+                assert self.sigma is not None and self.filter_mode is not None
                 window_size = int(self.sigma * 4)
                 current_version = self.pos % self.max_steps
                 version_start = self.pos - current_version
                 start = max(version_start, self.pos - window_size)
                 size = self.pos - start
                 if size > 1:
-                    self.rewards[self.pos] = gaussian_filter1d(self.org_rewards[start:self.pos, :], sigma=self.sigma, mode=self.filter_mode)[-1, :].copy()
+                    self.rewards[self.pos] = gaussian_filter1d(
+                        self.org_rewards[start : self.pos, :],
+                        sigma=self.sigma,
+                        mode=self.filter_mode,
+                    )[-1, :].copy()
                 else:
                     self.rewards[self.pos] = reward.reshape(-1, 1).copy()
 

@@ -21,6 +21,7 @@ from mtrl.rl.buffers import MultiTaskReplayBuffer, MultiTaskRolloutBuffer
 from mtrl.types import (
     Action,
     Agent,
+    AuxPolicyOutputs,
     CheckpointMetadata,
     LogDict,
     LogProb,
@@ -52,19 +53,27 @@ class Algorithm(
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
-    def get_metrics(self,) -> Dict: ...
+    def get_metrics(
+        self,
+    ) -> Dict: ...
 
     @abc.abstractmethod
     def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
 
     @abc.abstractmethod
-    def eval_action(self, observation: Observation) -> Action: ...
+    def eval_action(
+        self, observation: Observation
+    ) -> tuple[Action, AuxPolicyOutputs]: ...
 
     @abc.abstractmethod
-    def get_activations(self,) -> Dict: ...
+    def get_activations(
+        self,
+    ) -> Dict: ...
 
     @abc.abstractmethod
-    def get_initial_parameters(self, ) -> tuple[Dict, Dict, Dict]: ...
+    def get_initial_parameters(
+        self,
+    ) -> tuple[Dict, Dict, Dict]: ...
 
     @abc.abstractmethod
     def train(
@@ -77,7 +86,7 @@ class Algorithm(
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        alg_config = None
+        alg_config=None,
     ) -> Self: ...
 
 
@@ -108,7 +117,7 @@ class OffPolicyAlgorithm(
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        alg_config = None,
+        alg_config=None,
     ) -> Self:
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)

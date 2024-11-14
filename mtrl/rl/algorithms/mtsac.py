@@ -25,6 +25,7 @@ from mtrl.envs import EnvConfig
 from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
     Action,
+    AuxPolicyOutputs,
     LogDict,
     Observation,
     ReplayBufferSamples,
@@ -183,11 +184,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             target_entropy=target_entropy,
             use_task_weights=config.use_task_weights,
             initial_actor=actor,
-            initial_critic=critic
+            initial_critic=critic,
         )
 
     @override
-    def get_initial_parameters(self,) -> tuple[Dict, Dict]:
+    def get_initial_parameters(
+        self,
+    ) -> tuple[Dict, Dict]:
         return self.initial_actor, self.initial_critic
 
     @override
@@ -196,8 +199,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         return self.replace(key=key), jax.device_get(action)
 
     @override
-    def eval_action(self, observation: Observation) -> Action:
-        return jax.device_get(_eval_action(self.actor, observation))
+    def eval_action(self, observation: Observation) -> tuple[Action, AuxPolicyOutputs]:
+        return jax.device_get(_eval_action(self.actor, observation)), {}
 
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
@@ -252,7 +255,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             return _critic, {
                 "losses/qf_values": qf_values,
                 "losses/qf_loss": critic_loss_value,
-                "critic_grad_magnitude": jnp.linalg.norm(flat_grads)
+                "critic_grad_magnitude": jnp.linalg.norm(flat_grads),
             }
 
         # --- Alpha loss ---
@@ -325,15 +328,15 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         actor = self.actor.apply_gradients(grads=actor_grads)
 
         flat_grads, _ = fu.ravel_pytree(actor_grads)
-        logs['actor_grad_mag'] = jnp.linalg.norm(flat_grads)
+        logs["actor_grad_mag"] = jnp.linalg.norm(flat_grads)
 
         flat_params_act, _ = fu.ravel_pytree(self.actor.params)
-        logs['actor_params_norm'] = jnp.linalg.norm(flat_params_act)
+        logs["actor_params_norm"] = jnp.linalg.norm(flat_params_act)
 
         flat_params_crit, _ = fu.ravel_pytree(self.critic.params)
-        logs['critic_params_norm'] = jnp.linalg.norm(flat_params_crit)
+        logs["critic_params_norm"] = jnp.linalg.norm(flat_params_crit)
 
-        #critic: CriticTrainState
+        # critic: CriticTrainState
         critic = critic.replace(
             target_params=optax.incremental_update(
                 critic.params,
@@ -357,12 +360,23 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         return self._update_inner(data)
 
     @jax.jit
-    def target_data(self, x): # this generates target data for the different models
-        q_values_mean_preds = self.critic.apply_fn(self.critic.params, x.next_observations, x.actions).mean(axis=0)
-        return q_values_mean_preds + jnp.sin(1e5 * self.critic.apply_fn(self.initial_critic.params, x.next_observations, x.actions))
+    def target_data(self, x):  # this generates target data for the different models
+        q_values_mean_preds = self.critic.apply_fn(
+            self.critic.params, x.next_observations, x.actions
+        ).mean(axis=0)
+        return q_values_mean_preds + jnp.sin(
+            1e5
+            * self.critic.apply_fn(
+                self.initial_critic.params, x.next_observations, x.actions
+            )
+        )
 
     @jax.jit
-    def mod_critic_loss(self, params: FrozenDict, data, target) -> Float[Array, ""]: # This is the MSE between the predicted q_values, and the generated data
+    def mod_critic_loss(
+        self, params: FrozenDict, data, target
+    ) -> Float[
+        Array, ""
+    ]:  # This is the MSE between the predicted q_values, and the generated data
         q_pred = self.critic.apply_fn(params, data.observations, data.actions)
         loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
         return loss
@@ -378,40 +392,51 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         cr1 = extract_params_at_index(self.critic.params, 0)
         cr2 = extract_params_at_index(self.critic.params, 1)
 
-        _, act1 = q_network.apply({'params':cr1}, data.next_observations, next_actions, capture_intermediates=True)
-        _, act2 = q_network.apply({'params':cr2}, data.next_observations, next_actions, capture_intermediates=True)
+        _, act1 = q_network.apply(
+            {"params": cr1},
+            data.next_observations,
+            next_actions,
+            capture_intermediates=True,
+        )
+        _, act2 = q_network.apply(
+            {"params": cr2},
+            data.next_observations,
+            next_actions,
+            capture_intermediates=True,
+        )
 
         _, act_acts = self.actor.apply_fn(
             self.actor.params, data.next_observations, capture_intermediates=True
         )
 
         self = self.replace(key=key)
-        return act1['intermediates'], act2['intermediates'], act_acts['intermediates']
-
+        return act1["intermediates"], act2["intermediates"], act_acts["intermediates"]
 
     @override
-    def get_metrics(self, data, config): # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
+    def get_metrics(
+        self, data, config
+    ):  # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
         metrics = dict()
-        q_network = QValueFunction(config=config.critic_config) 
+        q_network = QValueFunction(config=config.critic_config)
 
         crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network)
 
         cr1acts = extract_activations(crit1_acts)
-        metrics['dead_neurons_critic_1'] = get_dead_neuron_count(cr1acts)
+        metrics["dead_neurons_critic_1"] = get_dead_neuron_count(cr1acts)
 
         cr2acts = extract_activations(crit2_acts)
-        metrics['dead_neurons_critic_2'] = get_dead_neuron_count(cr2acts)
+        metrics["dead_neurons_critic_2"] = get_dead_neuron_count(cr2acts)
 
         acts = extract_activations(actor_acts)
-        if 'final' in acts:
-            del acts['final']
-        metrics['dead_neurons_actor'] = get_dead_neuron_count(acts)
+        if "final" in acts:
+            del acts["final"]
+        metrics["dead_neurons_actor"] = get_dead_neuron_count(acts)
 
-        for key,value in cr1acts.items():
-            metrics['srank_critic_1_' + key] = compute_srank(value)
+        for key, value in cr1acts.items():
+            metrics["srank_critic_1_" + key] = compute_srank(value)
         for key, value in cr2acts.items():
-            metrics['srank_critic_2_' + key] = compute_srank(value)
+            metrics["srank_critic_2_" + key] = compute_srank(value)
         for key, value in acts.items():
-            metrics['srank_actor_' + key] = compute_srank(value)
+            metrics["srank_actor_" + key] = compute_srank(value)
 
         return metrics
