@@ -30,10 +30,12 @@ class NeuralNetworkConfig:
     optimizer: OptimizerConfig = OptimizerConfig()
     """The optimizer to use for the network."""
 
+
 @dataclass(frozen=True, kw_only=True)
 class MultiHeadConfig(NeuralNetworkConfig):
     num_tasks: int
     """The number of tasks (used for extracting the task IDs & to determine the number of heads)."""
+
 
 @dataclass(frozen=True, kw_only=True)
 class SoftModulesConfig(NeuralNetworkConfig):
@@ -103,5 +105,6 @@ class MOOREConfig(NeuralNetworkConfig):
     num_tasks: int
     """The number of tasks (used for extracting the task IDs)."""
 
-    num_experts: int
+    num_experts: int = 4
     """The number of orthogonal experts."""
+    # Original values are 4 for MT10 and 6 for MT50
