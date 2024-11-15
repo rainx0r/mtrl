@@ -15,6 +15,11 @@ from jaxtyping import Array, Float, PRNGKeyArray
 from mtrl.config.networks import ContinuousActionPolicyConfig, ValueFunctionConfig
 from mtrl.config.rl import AlgorithmConfig
 from mtrl.envs import EnvConfig
+from mtrl.monitoring.metrics import (
+    compute_srank,
+    extract_activations,
+    get_dead_neuron_ratio,
+)
 from mtrl.rl.networks import ContinuousActionPolicy, ValueFunction
 from mtrl.types import (
     Action,
@@ -265,111 +270,31 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         return self._update_inner(data)
 
     @jax.jit
-    def target_data(self, x):  # this generates target data for the different models
-        q_values_mean_preds = self.critic.apply_fn(
-            self.critic.params, x.next_observations, x.actions
-        ).mean(axis=0)
-        return q_values_mean_preds + jnp.sin(
-            1e5
-            * self.critic.apply_fn(
-                self.initial_critic.params, x.next_observations, x.actions
-            )
+    def _get_metrics_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+        _, policy_state = self.policy.apply_fn(
+            self.policy.params, data.observations, capture_intermediates=True
         )
 
-    @jax.jit
-    def mod_critic_loss(
-        self, params: FrozenDict, data, target
-    ) -> Float[
-        Array, ""
-    ]:  # This is the MSE between the predicted q_values, and the generated data
-        q_pred = self.critic.apply_fn(params, data.observations, data.actions)
-        loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
-        return loss
-
-    @override
-    def get_activations(self, data, q_network, replay_buffer, batch_size):
-        key, critic_samp_key = jax.random.split(self.key, 2)
-
-        next_actions, next_actions_log_probs = self.actor.apply_fn(
-            self.actor.params, data.next_observations
-        ).sample_and_log_prob(seed=critic_samp_key)
-
-        cr1, cr2 = get_critic_params(self.critic.params)
-        _, act1 = q_network.apply(
-            {"params": cr1},
-            data.next_observations,
-            next_actions,
-            capture_intermediates=True,
-        )
-        _, act2 = q_network.apply(
-            {"params": cr2},
-            data.next_observations,
-            next_actions,
+        _, vf_state = self.value_function.apply_fn(
+            self.value_function.params,
+            data.observations,
             capture_intermediates=True,
         )
 
-        _, act_acts = self.actor.apply_fn(
-            self.actor.params, data.next_observations, capture_intermediates=True
-        )
+        actor_acts = extract_activations(policy_state["intermediates"])
+        vf_acts = extract_activations(vf_state["intermediates"])
 
-        self = self.replace(key=key)
-        return act1["intermediates"], act2["intermediates"], act_acts["intermediates"]
+        metrics: LogDict
+        metrics = {"metrics/dead_neurons_policy": get_dead_neuron_ratio(actor_acts)}
+        for key, value in actor_acts.items():
+            metrics[f"metrics/srank_policy_{key}"] = compute_srank(value)
+
+        metrics["metrics/dead_neurons_vf"] = get_dead_neuron_ratio(vf_acts)
+        for key, value in vf_acts.items():
+            metrics[f"metrics/srank_vf_{key}"] = compute_srank(value)
+
+        return self, metrics
 
     @override
-    def get_metrics(
-        self, data, config, replay_buffer, batch_size
-    ):  # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
-        metrics = dict()
-        q_network = QValueFunction(config=config.critic_config)
-
-        crit1_acts, crit2_acts, actor_acts = self.get_activations(
-            data, q_network, replay_buffer, batch_size
-        )
-
-        network = actor_acts[list(actor_acts.keys())[0]]
-        layer0_act = network["layer_0"]["__call__"][0]  # First layer
-        layer1_act = network["layer_1"]["__call__"][0]  # Second layer
-        final_act = network["__call__"][0]
-
-        intermediate_act = {"l1": layer0_act, "l2": layer1_act, "l3": final_act}
-        metrics["dead_neurons_actor"] = get_dead_neuron_count(intermediate_act)
-
-        dense0_acts = crit1_acts["MultiHeadNetwork_0"]["layer_0"]["__call__"][0]
-        layer0_acts = crit1_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
-        intermediate_act = {"l1": dense0_acts, "l2": layer0_acts}
-        metrics["dead_neurons_critic_1"] = get_dead_neuron_count(intermediate_act)
-
-        dense0_acts = crit2_acts["MultiHeadNetwork_0"]["layer_0"]["__call__"][0]
-        layer0_acts = crit2_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
-        intermediate_act = {"l1": dense0_acts, "l2": layer0_acts}
-        metrics["dead_neurons_critic_2"] = get_dead_neuron_count(intermediate_act)
-
-        metrics["srank_crit1"] = compute_srank(
-            crit1_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
-        )
-        metrics["srank_crti2"] = compute_srank(
-            crit2_acts["MultiHeadNetwork_0"]["layer_1"]["__call__"][0]
-        )
-
-        print(layer0_act.shape, layer1_act.shape, final_act.shape)
-        exit(0)
-        # metrics['srank_actor'] = compute_srank(actor_acts[list(actor_acts.keys())[0]
-
-        return metrics
-
-
-def compute_srank(feature_matrix, delta=0.01):
-    """Compute effective rank (srank) of a feature matrix.
-    Args:
-        feature_matrix: Matrix of shape [num_features, feature_dim]
-        delta: Threshold parameter (default: 0.01)
-    Returns:
-        Effective rank (srank) value
-    """
-    s = jnp.linalg.svd(feature_matrix, compute_uv=False)
-    cumsum = jnp.cumsum(s)
-    total = jnp.sum(s)
-    ratios = cumsum / total
-    mask = ratios >= (1.0 - delta)
-    srank = jnp.argmax(mask) + 1
-    return srank
+    def get_metrics(self, data: Rollout) -> tuple[Self, LogDict]:
+        return self._get_metrics_inner(data)

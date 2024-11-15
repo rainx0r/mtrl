@@ -5,13 +5,17 @@ import numpy.typing as npt
 
 from jaxtyping import Float, Array
 
-type LogDict = dict[str, float | Float[Array, ""]]
 
 Action = Float[np.ndarray, "... action_dim"]
 Value = Float[np.ndarray, "... 1"]
 LogProb = Float[np.ndarray, "... 1"]
 Observation = Float[np.ndarray, "... obs_dim"]
-AuxPolicyOutputs = dict[str, npt.NDArray]
+LayerActivations = Float[Array, "batch_size layer_dim"]
+
+type LogDict = dict[str, float | Float[Array, ""]]
+type AuxPolicyOutputs = dict[str, npt.NDArray]
+type LayerActivationsDict = dict[str, Float[Array, "batch_size layer_dim"]]
+type Intermediates = dict[str, tuple[LayerActivations, ...] | "Intermediates"]
 
 
 class Agent(Protocol):

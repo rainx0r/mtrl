@@ -1,7 +1,7 @@
 import abc
 import time
 from collections import deque
-from typing import Deque, Generic, Self, TypeVar, override, Dict
+from typing import Deque, Generic, Self, TypeVar, override
 
 import gymnasium as gym
 import numpy as np
@@ -34,10 +34,14 @@ from mtrl.types import (
 
 AlgorithmConfigType = TypeVar("AlgorithmConfigType", bound=AlgorithmConfig)
 TrainingConfigType = TypeVar("TrainingConfigType", bound=TrainingConfig)
+DataType = TypeVar("DataType", ReplayBufferSamples, Rollout)
 
 
 class Algorithm(
-    abc.ABC, Agent, Generic[AlgorithmConfigType, TrainingConfigType], struct.PyTreeNode
+    abc.ABC,
+    Agent,
+    Generic[AlgorithmConfigType, TrainingConfigType, DataType],
+    struct.PyTreeNode,
 ):
     """Based on https://github.com/kevinzakka/nanorl/blob/main/nanorl/agent.py"""
 
@@ -50,12 +54,10 @@ class Algorithm(
     ) -> "Algorithm": ...
 
     @abc.abstractmethod
-    def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]: ...
+    def update(self, data: DataType) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
-    def get_metrics(
-        self,
-    ) -> Dict: ...
+    def get_metrics(self, data: DataType) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
     def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
@@ -65,15 +67,8 @@ class Algorithm(
         self, observation: Observation
     ) -> tuple[Action, AuxPolicyOutputs]: ...
 
-    @abc.abstractmethod
-    def get_activations(
-        self,
-    ) -> Dict: ...
-
-    @abc.abstractmethod
-    def get_initial_parameters(
-        self,
-    ) -> tuple[Dict, Dict, Dict]: ...
+    # @abc.abstractmethod
+    # def get_initial_parameters(self) -> tuple[Dict, Dict, Dict]: ...
 
     @abc.abstractmethod
     def train(
@@ -86,12 +81,11 @@ class Algorithm(
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        alg_config=None,
     ) -> Self: ...
 
 
 class OffPolicyAlgorithm(
-    Algorithm[AlgorithmConfigType, OffPolicyTrainingConfig],
+    Algorithm[AlgorithmConfigType, OffPolicyTrainingConfig, ReplayBufferSamples],
     Generic[AlgorithmConfigType],
 ):
     def spawn_replay_buffer(
@@ -103,6 +97,11 @@ class OffPolicyAlgorithm(
             env_obs_space=env_config.observation_space,
             env_action_space=env_config.action_space,
             seed=seed,
+            reward_filter=config.reward_filter,
+            alpha=config.reward_filter_alpha,
+            sigma=config.reward_filter_sigma,
+            delta=config.reward_filter_delta,
+            filter_mode=config.reward_filter_mode,
         )
 
     @override
@@ -113,11 +112,9 @@ class OffPolicyAlgorithm(
         env_config: EnvConfig,
         seed: int = 1,
         track: bool = True,
-        compute_network_metrics: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
-        alg_config=None,
     ) -> Self:
         global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
         global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
@@ -220,12 +217,14 @@ class OffPolicyAlgorithm(
                         + f" return: {mean_returns:.4f}"
                     )
 
-                    if compute_network_metrics:
-                        network_metrics = self.get_metrics(data, alg_config)
-
                     if track:
                         wandb.log(eval_metrics, step=total_steps)
-                        wandb.log(network_metrics, step=total_steps)
+
+                    if config.compute_network_metrics:
+                        self, network_metrics = self.get_metrics(data)
+
+                        if track:
+                            wandb.log(network_metrics, step=total_steps)
 
                     # Reset envs again to exit eval mode
                     obs, _ = envs.reset()
@@ -252,7 +251,7 @@ class OffPolicyAlgorithm(
 
 
 class OnPolicyAlgorithm(
-    Algorithm[AlgorithmConfigType, OnPolicyTrainingConfig],
+    Algorithm[AlgorithmConfigType, OnPolicyTrainingConfig, Rollout],
     Generic[AlgorithmConfigType],
 ):
     @abc.abstractmethod
@@ -406,7 +405,13 @@ class OnPolicyAlgorithm(
 
                 if track:
                     wandb.log(logs, step=total_steps)
-                    wandb.log(metrics, step=total_steps)
+
+                if config.compute_network_metrics:
+                    self, metrics = self.get_metrics(rollouts)
+
+                    if track:
+                        wandb.log(metrics, step=total_steps)
+
             # Evaluation
             if (
                 config.evaluation_frequency > 0
@@ -429,11 +434,8 @@ class OnPolicyAlgorithm(
                     + f" return: {mean_returns:.4f}"
                 )
 
-                metrics = self.get_metrics()
-
                 if track:
                     wandb.log(eval_metrics, step=total_steps)
-                    wandb.log(metrics, step=total_steps)
 
                 # Reset envs again to exit eval mode
                 obs, _ = envs.reset()

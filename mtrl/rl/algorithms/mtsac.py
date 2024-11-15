@@ -2,39 +2,41 @@
 
 import dataclasses
 from functools import partial
-from typing import Self, override, Dict
-import copy
+from typing import Self, override
 
-import gymnasium as gym
+import distrax
 import flax.linen as nn
+import gymnasium as gym
 import jax
+import jax.flatten_util as flatten_util
 import jax.numpy as jnp
 import numpy as np
+import optax
 from flax import struct
 from flax.core import FrozenDict
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
-import optax
-import jax.flatten_util as fu
-
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import AlgorithmConfig
 from mtrl.envs import EnvConfig
+from mtrl.monitoring.metrics import (
+    compute_srank,
+    extract_activations,
+    get_dead_neuron_ratio,
+)
 from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
     Action,
     AuxPolicyOutputs,
+    LayerActivationsDict,
     LogDict,
     Observation,
     ReplayBufferSamples,
-    Rollout,
 )
 
 from .base import OffPolicyAlgorithm
-
-from mtrl.metrics import *
 
 
 class MultiTaskTemperature(nn.Module):
@@ -83,9 +85,9 @@ def extract_task_weights(
     task_weights: jax.Array
 
     log_alpha = alpha_params["params"]["log_alpha"]  # pyright: ignore [reportAssignmentType]
-    task_weights = jax.nn.softmax(-log_alpha)  # NOTE 6
+    task_weights = jax.nn.softmax(-log_alpha)
     task_weights = task_ids @ task_weights.reshape(-1, 1)  # pyright: ignore [reportAssignmentType]
-    task_weights *= log_alpha.shape[0]  # NOTE 6
+    task_weights *= log_alpha.shape[0]
     return task_weights
 
 
@@ -109,9 +111,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     tau: float = struct.field(pytree_node=False)
     target_entropy: float = struct.field(pytree_node=False)
     use_task_weights: bool = struct.field(pytree_node=False)
-
-    initial_actor: TrainState | None = None
-    initial_critic: CriticTrainState | None = None
+    num_critics: int = struct.field(pytree_node=False)
 
     @override
     @staticmethod
@@ -183,15 +183,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             tau=config.tau,
             target_entropy=target_entropy,
             use_task_weights=config.use_task_weights,
-            initial_actor=actor,
-            initial_critic=critic,
+            num_critics=config.num_critics,
         )
-
-    @override
-    def get_initial_parameters(
-        self,
-    ) -> tuple[Dict, Dict]:
-        return self.initial_actor, self.initial_critic
 
     @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:
@@ -251,11 +244,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 critic_loss, has_aux=True
             )(_critic.params)
             _critic = _critic.apply_gradients(grads=critic_grads)
-            flat_grads, _ = fu.ravel_pytree(critic_grads)
+            flat_grads, _ = flatten_util.ravel_pytree(critic_grads)
             return _critic, {
                 "losses/qf_values": qf_values,
                 "losses/qf_loss": critic_loss_value,
-                "critic_grad_magnitude": jnp.linalg.norm(flat_grads),
+                "metrics/critic_grad_magnitude": jnp.linalg.norm(flat_grads),
             }
 
         # --- Alpha loss ---
@@ -327,16 +320,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )(self.actor.params)
         actor = self.actor.apply_gradients(grads=actor_grads)
 
-        flat_grads, _ = fu.ravel_pytree(actor_grads)
-        logs["actor_grad_mag"] = jnp.linalg.norm(flat_grads)
+        flat_grads, _ = flatten_util.ravel_pytree(actor_grads)
+        logs["metrics/actor_grad_magnitude"] = jnp.linalg.norm(flat_grads)
 
-        flat_params_act, _ = fu.ravel_pytree(self.actor.params)
-        logs["actor_params_norm"] = jnp.linalg.norm(flat_params_act)
+        flat_params_act, _ = flatten_util.ravel_pytree(self.actor.params)
+        logs["metrics/actor_params_norm"] = jnp.linalg.norm(flat_params_act)
 
-        flat_params_crit, _ = fu.ravel_pytree(self.critic.params)
-        logs["critic_params_norm"] = jnp.linalg.norm(flat_params_crit)
+        flat_params_crit, _ = flatten_util.ravel_pytree(self.critic.params)
+        logs["metrics/critic_params_norm"] = jnp.linalg.norm(flat_params_crit)
 
-        # critic: CriticTrainState
+        critic: CriticTrainState
         critic = critic.replace(
             target_params=optax.incremental_update(
                 critic.params,
@@ -355,88 +348,52 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         return (self, {**logs, "losses/actor_loss": actor_loss_value})
 
     @override
-    def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]:
-        assert isinstance(data, ReplayBufferSamples), "MTSAC does not support rollouts"
+    def update(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
         return self._update_inner(data)
 
-    @jax.jit
-    def target_data(self, x):  # this generates target data for the different models
-        q_values_mean_preds = self.critic.apply_fn(
-            self.critic.params, x.next_observations, x.actions
-        ).mean(axis=0)
-        return q_values_mean_preds + jnp.sin(
-            1e5
-            * self.critic.apply_fn(
-                self.initial_critic.params, x.next_observations, x.actions
-            )
+    def _split_critic_activations(
+        self, critic_acts: LayerActivationsDict
+    ) -> tuple[LayerActivationsDict, ...]:
+        return tuple(
+            {key: value[i] for key, value in critic_acts.items()}
+            for i in range(self.num_critics)
         )
 
     @jax.jit
-    def mod_critic_loss(
-        self, params: FrozenDict, data, target
-    ) -> Float[
-        Array, ""
-    ]:  # This is the MSE between the predicted q_values, and the generated data
-        q_pred = self.critic.apply_fn(params, data.observations, data.actions)
-        loss = 0.5 * ((q_pred - target) ** 2).mean(axis=1).sum()
-        return loss
+    def _get_metrics_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+        key, critic_activations_key = jax.random.split(self.key, 2)
 
-    @override
-    def get_activations(self, data, q_network):
-        key, critic_samp_key = jax.random.split(self.key, 2)
-
-        next_actions, next_actions_log_probs = self.actor.apply_fn(
-            self.actor.params, data.next_observations
-        ).sample_and_log_prob(seed=critic_samp_key)
-
-        cr1 = extract_params_at_index(self.critic.params, 0)
-        cr2 = extract_params_at_index(self.critic.params, 1)
-
-        _, act1 = q_network.apply(
-            {"params": cr1},
-            data.next_observations,
-            next_actions,
-            capture_intermediates=True,
+        actions_dist: distrax.Distribution
+        actions_dist, actor_state = self.actor.apply_fn(
+            self.actor.params, data.observations, capture_intermediates=True
         )
-        _, act2 = q_network.apply(
-            {"params": cr2},
-            data.next_observations,
-            next_actions,
+        actions = actions_dist.sample(seed=critic_activations_key)
+
+        _, critic_state = self.critic.apply_fn(
+            self.critic.params,
+            data.observations,
+            actions,
             capture_intermediates=True,
         )
 
-        _, act_acts = self.actor.apply_fn(
-            self.actor.params, data.next_observations, capture_intermediates=True
-        )
+        actor_acts = extract_activations(actor_state["intermediates"])
+
+        critic_acts = extract_activations(critic_state["intermediates"])
+        critic_acts = self._split_critic_activations(critic_acts)
+
+        metrics: LogDict
+        metrics = {"metrics/dead_neurons_actor": get_dead_neuron_ratio(actor_acts)}
+        for key, value in actor_acts.items():
+            metrics[f"metrics/srank_actor_{key}"] = compute_srank(value)
+
+        for i, acts in enumerate(critic_acts):
+            metrics[f"metrics/dead_neurons_critic_{i}"] = get_dead_neuron_ratio(acts)
+            for key, value in acts.items():
+                metrics[f"metrics/srank_critic{i}_{key}"] = compute_srank(value)
 
         self = self.replace(key=key)
-        return act1["intermediates"], act2["intermediates"], act_acts["intermediates"]
+        return self, metrics
 
     @override
-    def get_metrics(
-        self, data, config
-    ):  # TODO: This calculation is based on a static number of layers, there's probably a way to do things more intelligently using the config or something
-        metrics = dict()
-        q_network = QValueFunction(config=config.critic_config)
-
-        crit1_acts, crit2_acts, actor_acts = self.get_activations(data, q_network)
-
-        cr1acts = extract_activations(crit1_acts)
-        metrics["dead_neurons_critic_1"] = get_dead_neuron_count(cr1acts)
-
-        cr2acts = extract_activations(crit2_acts)
-        metrics["dead_neurons_critic_2"] = get_dead_neuron_count(cr2acts)
-
-        acts = extract_activations(actor_acts)
-        if "final" in acts:
-            del acts["final"]
-        metrics["dead_neurons_actor"] = get_dead_neuron_count(acts)
-
-        for key, value in cr1acts.items():
-            metrics["srank_critic_1_" + key] = compute_srank(value)
-        for key, value in cr2acts.items():
-            metrics["srank_critic_2_" + key] = compute_srank(value)
-        for key, value in acts.items():
-            metrics["srank_actor_" + key] = compute_srank(value)
-
-        return metrics
+    def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+        return self._get_metrics_inner(data)

@@ -95,7 +95,7 @@ class Ensemble(nn.Module):
     def __call__(self, *args):
         ensemble = nn.vmap(
             self.net_cls,
-            variable_axes={"params": 0},
+            variable_axes={"params": 0, "intermediates": 0},
             split_rngs={"params": True, "dropout": True},
             in_axes=None,  # pyright: ignore [reportArgumentType]
             out_axes=0,

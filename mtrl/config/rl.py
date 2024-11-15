@@ -11,6 +11,14 @@ class AlgorithmConfig:
 class TrainingConfig:
     total_steps: int
     evaluation_frequency: int = 200_000 // 500
+    compute_network_metrics: bool = True
+
+    # TODO: Maybe put into its own RewardFilterConfig()?
+    reward_filter: str | None = None
+    reward_filter_sigma: float | None = None
+    reward_filter_alpha: float | None = None
+    reward_filter_delta: float | None = None
+    reward_filter_mode: str | None = None
 
 
 @dataclass(frozen=True)
