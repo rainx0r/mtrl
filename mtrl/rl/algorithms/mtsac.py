@@ -187,6 +187,15 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )
 
     @override
+    def get_num_params(self) -> dict[str, int]:
+        return {
+            "actor_num_params": sum(x.size for x in jax.tree.leaves(self.actor.params)),
+            "critic_num_params": sum(
+                x.size for x in jax.tree.leaves(self.critic.params)
+            ),
+        }
+
+    @override
     def sample_action(self, observation: Observation) -> tuple[Self, Action]:
         action, key = _sample_action(self.actor, observation, self.key)
         return self.replace(key=key), jax.device_get(action)

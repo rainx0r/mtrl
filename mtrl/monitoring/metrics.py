@@ -90,7 +90,7 @@ def get_dormant_neuron_logs(
     total_hidden_count = 0
     for layer_name, layer_score in all_layers_score.items():
         num_dormant_neurons = dormant_neurons[layer_name]["count"]
-        logs[f"{layer_name}_ratio"] = num_dormant_neurons / layer_score.shape[0]
+        logs[f"{layer_name}_ratio"] = (num_dormant_neurons / layer_score.shape[0]) * 100
         logs[f"{layer_name}_count"] = num_dormant_neurons
         total_dead_neurons += num_dormant_neurons
         total_hidden_count += layer_score.shape[0]

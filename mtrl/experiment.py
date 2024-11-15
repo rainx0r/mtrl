@@ -108,6 +108,10 @@ class Experiment:
 
                 print(f"Loaded checkpoint at step {checkpoint_metadata['step']}")
 
+        # Track number of params
+        if self._wandb_enabled:
+            wandb.config.update(algorithm.get_num_params())
+
         algorithm.train(
             config=self.training_config,
             envs=envs,

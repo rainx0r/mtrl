@@ -60,6 +60,9 @@ class Algorithm(
     def get_metrics(self, data: DataType) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
+    def get_num_params(self) -> dict[str, int]: ...
+
+    @abc.abstractmethod
     def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
 
     @abc.abstractmethod
