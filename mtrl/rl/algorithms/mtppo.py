@@ -18,7 +18,7 @@ from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
     compute_srank,
     extract_activations,
-    get_dead_neuron_ratio,
+    get_dormant_neuron_logs,
 )
 from mtrl.rl.networks import ContinuousActionPolicy, ValueFunction
 from mtrl.types import (
@@ -285,11 +285,22 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         vf_acts = extract_activations(vf_state["intermediates"])
 
         metrics: LogDict
-        metrics = {"metrics/dead_neurons_policy": get_dead_neuron_ratio(actor_acts)}
+        metrics = {}
+        metrics.update(
+            {
+                f"metrics/dormant_neurons_policy_{log_name}": log_value
+                for log_name, log_value in get_dormant_neuron_logs(actor_acts).items()
+            }
+        )
         for key, value in actor_acts.items():
             metrics[f"metrics/srank_policy_{key}"] = compute_srank(value)
 
-        metrics["metrics/dead_neurons_vf"] = get_dead_neuron_ratio(vf_acts)
+        metrics.update(
+            {
+                f"metrics/dead_neurons_vf_{log_name}": log_value
+                for log_name, log_value in get_dormant_neuron_logs(vf_acts).items()
+            }
+        )
         for key, value in vf_acts.items():
             metrics[f"metrics/srank_vf_{key}"] = compute_srank(value)
 

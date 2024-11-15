@@ -24,7 +24,7 @@ from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
     compute_srank,
     extract_activations,
-    get_dead_neuron_ratio,
+    get_dormant_neuron_logs,
 )
 from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
@@ -378,16 +378,31 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
         actor_acts = extract_activations(actor_state["intermediates"])
 
-        critic_acts = extract_activations(critic_state["intermediates"])
+        # HACK: Explicitly using the generated name of the Vmap Critic module here.
+        critic_acts = extract_activations(
+            critic_state["intermediates"]["VmapQValueFunction_0"]
+        )
         critic_acts = self._split_critic_activations(critic_acts)
+        breakpoint()
 
         metrics: LogDict
-        metrics = {"metrics/dead_neurons_actor": get_dead_neuron_ratio(actor_acts)}
+        metrics = {}
+        metrics.update(
+            {
+                f"metrics/dormant_neurons_actor_{log_name}": log_value
+                for log_name, log_value in get_dormant_neuron_logs(actor_acts).items()
+            }
+        )
         for key, value in actor_acts.items():
             metrics[f"metrics/srank_actor_{key}"] = compute_srank(value)
 
         for i, acts in enumerate(critic_acts):
-            metrics[f"metrics/dead_neurons_critic_{i}"] = get_dead_neuron_ratio(acts)
+            metrics.update(
+                {
+                    f"metrics/dormant_neurons_critic_{i}_{log_name}": log_value
+                    for log_name, log_value in get_dormant_neuron_logs(acts).items()
+                }
+            )
             for key, value in acts.items():
                 metrics[f"metrics/srank_critic{i}_{key}"] = compute_srank(value)
 

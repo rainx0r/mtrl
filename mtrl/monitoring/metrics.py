@@ -2,7 +2,7 @@ import chex
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 
-from mtrl.types import Intermediates, LayerActivationsDict
+from mtrl.types import Intermediates, LayerActivationsDict, LogDict
 
 
 def compute_srank(
@@ -35,7 +35,7 @@ def extract_activations(
         activations = {}
         if isinstance(d, dict):
             # If this dictionary has '__call__', store its activation
-            # but only if it's not the top-level / 'fina' object.
+            # but only if it's not the top-level / 'final' object.
             if activation_key in d:
                 if len(current_path) != 0:
                     layer_name = "_".join(current_path)
@@ -53,18 +53,21 @@ def extract_activations(
                     activations.update(sub_activations)
         return activations
 
-    return recursive_extract(network_dict)
+    # Skip the first key/value pair which at the top level is always the parent Flax module.
+    first_value = next(iter(network_dict.values()))
+    assert isinstance(first_value, dict)
+    return recursive_extract(first_value)
 
 
-def get_dead_neuron_ratio(
-    layer_activations: LayerActivationsDict, dead_neuron_threshold: float = 0.1
-) -> Float[Array, ""]:
+def get_dormant_neuron_logs(
+    layer_activations: LayerActivationsDict, dormant_neuron_threshold: float = 0.1
+) -> LogDict:
     """Compute the dormant neuron ratio per layer using Equation 1 from "The Dormant Neuron Phenomenon in Deep Reinforcement Learning" (Sokar et al., 2023; https://proceedings.mlr.press/v202/sokar23a/sokar23a.pdf).
 
     Adapted from https://github.com/google/dopamine/blob/master/dopamine/labs/redo/tfagents/sac_train_eval.py#L563"""
 
     all_layers_score: LayerActivationsDict = {}
-    dead_neurons = {}  # To store both mask and count for each layer
+    dormant_neurons = {}  # To store both mask and count for each layer
 
     for act_key, act_value in layer_activations.items():
         chex.assert_rank(act_value, 2)
@@ -73,19 +76,30 @@ def get_dead_neuron_ratio(
         all_layers_score[act_key] = neurons_score
 
         mask = jnp.where(
-            neurons_score <= dead_neuron_threshold,
+            neurons_score <= dormant_neuron_threshold,
             jnp.ones_like(neurons_score, dtype=jnp.int32),
             jnp.zeros_like(neurons_score, dtype=jnp.int32),
         )
-        num_dead_neurons = jnp.sum(mask)
+        num_dormant_neurons = jnp.sum(mask)
 
-        dead_neurons[act_key] = {"mask": mask, "count": num_dead_neurons}
+        dormant_neurons[act_key] = {"mask": mask, "count": num_dormant_neurons}
+
+    logs = {}
 
     total_dead_neurons = 0
     total_hidden_count = 0
     for layer_name, layer_score in all_layers_score.items():
-        num_dead_neurons = dead_neurons[layer_name]["count"]
-        total_dead_neurons += num_dead_neurons
+        num_dormant_neurons = dormant_neurons[layer_name]["count"]
+        logs[f"{layer_name}_ratio"] = num_dormant_neurons / layer_score.shape[0]
+        logs[f"{layer_name}_count"] = num_dormant_neurons
+        total_dead_neurons += num_dormant_neurons
         total_hidden_count += layer_score.shape[0]
 
-    return jnp.array((total_dead_neurons / total_hidden_count) * 100)
+    logs.update(
+        {
+            "total_ratio": jnp.array((total_dead_neurons / total_hidden_count) * 100),
+            "total_count": total_dead_neurons,
+        }
+    )
+
+    return logs
