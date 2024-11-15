@@ -413,7 +413,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 }
             )
             for key, value in acts.items():
-                metrics[f"metrics/srank_critic{i}_{key}"] = compute_srank(value)
+                metrics[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
 
         self = self.replace(key=key)
         return self, metrics
