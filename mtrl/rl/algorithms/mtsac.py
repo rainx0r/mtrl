@@ -392,7 +392,6 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             critic_state["intermediates"]["VmapQValueFunction_0"]
         )
         critic_acts = self._split_critic_activations(critic_acts)
-        breakpoint()
 
         metrics: LogDict
         metrics = {}
