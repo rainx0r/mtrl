@@ -48,8 +48,13 @@ class SoftModulesConfig(NeuralNetworkConfig):
     module_width: int = 256
     """The number of neurons in each module in the Base Policy Network. `d` in the paper."""
 
+    depth: int = 2
+    """The number of Base Policy Network modules layers."""
+    # 2 for MT10, 4 for MT50
+
     num_modules: int = 2
     """The number of modules to use in each Base Policy Network layer."""
+    # 2 for MT10, 4 for MT50
 
     embedding_dim: int = 400
     """The dimension of the observation / task index embedding. `D` in the paper."""

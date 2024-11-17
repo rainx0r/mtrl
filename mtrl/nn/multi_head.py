@@ -37,6 +37,7 @@ class MultiHeadNetwork(nn.Module):
                 use_bias=self.config.use_bias,
             )(x)
             x = self.config.activation(x)
+            self.sow("intermediates", f"trunk_layer_{i}", x)
 
         # 2) Create a head for each task. Pass *every* input through *every* head
         # because we assume the batch dim is not necessarily a task dimension

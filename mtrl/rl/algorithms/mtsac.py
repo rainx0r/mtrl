@@ -30,6 +30,7 @@ from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
     Action,
     AuxPolicyOutputs,
+    Intermediates,
     LayerActivationsDict,
     LogDict,
     Observation,
@@ -369,30 +370,37 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )
 
     @jax.jit
-    def _get_metrics_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+    def _get_intermediates(
+        self, data: ReplayBufferSamples
+    ) -> tuple[Intermediates, Intermediates]:
         key, critic_activations_key = jax.random.split(self.key, 2)
 
         actions_dist: distrax.Distribution
         actions_dist, actor_state = self.actor.apply_fn(
-            self.actor.params, data.observations, capture_intermediates=True
+            self.actor.params, data.observations, mutable="intermediates"
         )
         actions = actions_dist.sample(seed=critic_activations_key)
 
         _, critic_state = self.critic.apply_fn(
-            self.critic.params,
-            data.observations,
-            actions,
-            capture_intermediates=True,
+            self.critic.params, data.observations, actions, mutable="intermediates"
         )
 
-        actor_acts = extract_activations(actor_state["intermediates"])
+        self = self.replace(key=key)
 
         # HACK: Explicitly using the generated name of the Vmap Critic module here.
-        critic_acts = extract_activations(
-            critic_state["intermediates"]["VmapQValueFunction_0"]
-        )
+        return actor_state["intermediates"], critic_state["intermediates"][
+            "VmapQValueFunction_0"
+        ]
+
+    @override
+    def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+        actor_intermediates, critic_intermediates = self._get_intermediates(data)
+
+        actor_acts = extract_activations(actor_intermediates)
+        critic_acts = extract_activations(critic_intermediates)
         critic_acts = self._split_critic_activations(critic_acts)
 
+        # TODO: None of the dormant neuron logs / srank compute are jitted at the top level
         metrics: LogDict
         metrics = {}
         metrics.update(
@@ -414,9 +422,4 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             for key, value in acts.items():
                 metrics[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
 
-        self = self.replace(key=key)
         return self, metrics
-
-    @override
-    def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
-        return self._get_metrics_inner(data)

@@ -3,6 +3,8 @@ from collections.abc import Callable
 import flax.linen as nn
 import jax
 
+from .utils import name_prefix
+
 
 class MLP(nn.Module):
     """A Flax Module to represent an MLP feature extractor."""
@@ -33,6 +35,7 @@ class MLP(nn.Module):
                 use_bias=self.use_bias,
             )(x)
             x = self.activation_fn(x)
+            self.sow("intermediates", f"{name_prefix(self)}layer_{i}", x)
         x = nn.Dense(
             self.head_dim,
             name=f"layer_{self.depth}",

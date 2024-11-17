@@ -47,17 +47,20 @@ class Experiment:
         wandb.init(dir=str(self.data_dir), **wandb_kwargs)
 
     def run(self) -> None:
-        envs = self.env.spawn(self.seed)
+        envs = self.env.spawn(seed=self.seed)
 
         algorithm_cls = get_algorithm_for_config(self.algorithm)
         algorithm: Algorithm
-        algorithm = algorithm_cls.initialize(self.algorithm, self.env)
+        algorithm = algorithm_cls.initialize(self.algorithm, self.env, seed=self.seed)
         is_off_policy = isinstance(algorithm, OffPolicyAlgorithm)
 
         buffer_checkpoint = None
         checkpoint_manager = None
         checkpoint_metadata = None
         envs_checkpoint = None
+
+        random.seed(self.seed)
+        np.random.seed(self.seed)
 
         if self.checkpoint:
             checkpoint_items = (

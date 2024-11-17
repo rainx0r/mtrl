@@ -6,6 +6,7 @@ from mtrl.config.nn import SoftModulesConfig
 
 from .base import MLP
 from .initializers import uniform
+from .utils import name_prefix
 
 # NOTE: the paper is missing quite a lot of details that are in the official code
 #
@@ -77,6 +78,9 @@ class RoutingNetworkLayer(nn.Module):
     ) -> jax.Array:
         if prev_probs is not None:  # Eq 5-only bit
             task_embedding *= self.prob_embedding_fc(prev_probs)
+            self.sow(
+                "intermediates", f"{name_prefix(self)}task_embedding", task_embedding
+            )
         x = self.prob_output_fc(self.config.activation(task_embedding))
         if not self.last:  # NOTE: 5
             x = x.reshape(
@@ -154,6 +158,8 @@ class SoftModularizationNetwork(nn.Module):
         # Initial layer inputs
         prev_probs = None
         obs_embedding = self.config.activation(obs_embedding)  # NOTE: 2
+        self.sow("intermediates", "task_embedding", task_embedding)
+        self.sow("intermediates", "obs_embedding", obs_embedding)
         module_ins = jnp.stack(
             [obs_embedding for _ in range(self.config.num_modules)], axis=-2
         )
@@ -165,8 +171,14 @@ class SoftModularizationNetwork(nn.Module):
         # Equation 8, holds for all layers except L
         for i in range(self.config.depth - 1):
             probs = self.prob_fcs[i](task_embedding, prev_probs)
+            self.sow("intermediates", f"layer_{i}_probs", probs.reshape(x.shape[0], -1))
             # NOTE: 4
             module_outs = self.config.activation(probs @ self.layers[i](module_ins))
+            self.sow(
+                "intermediates",
+                f"layer_{i}_modules",
+                module_outs.reshape(x.shape[0], -1),
+            )
 
             # Post processing
             probs = probs.reshape(
@@ -184,5 +196,15 @@ class SoftModularizationNetwork(nn.Module):
         probs = jnp.expand_dims(
             self.prob_fcs[-1](task_embedding, prev_probs), axis=-1
         )  # NOTE: 5
+        self.sow(
+            "intermediates",
+            f"layer_{self.config.depth - 1}_probs",
+            probs.reshape(x.shape[0], -1),
+        )
         output_embedding = self.config.activation(jnp.sum(module_outs * probs, axis=-2))
+        self.sow(
+            "intermediates",
+            f"layer_{self.config.depth - 1}_modules",
+            output_embedding.reshape(x.shape[0], -1),
+        )
         return self.output_head(output_embedding)

@@ -24,6 +24,7 @@ from mtrl.rl.networks import ContinuousActionPolicy, ValueFunction
 from mtrl.types import (
     Action,
     AuxPolicyOutputs,
+    Intermediates,
     LogDict,
     LogProb,
     Observation,
@@ -281,7 +282,7 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         return self._update_inner(data)
 
     @jax.jit
-    def _get_metrics_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+    def _get_intermediates(self, data: Rollout) -> tuple[Intermediates, Intermediates]:
         _, policy_state = self.policy.apply_fn(
             self.policy.params, data.observations, capture_intermediates=True
         )
@@ -291,19 +292,24 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             data.observations,
             capture_intermediates=True,
         )
+        return policy_state["intermediates"], vf_state["intermediates"]
 
-        actor_acts = extract_activations(policy_state["intermediates"])
-        vf_acts = extract_activations(vf_state["intermediates"])
+    @override
+    def get_metrics(self, data: Rollout) -> tuple[Self, LogDict]:
+        policy_intermediates, vf_intermediates = self._get_intermediates(data)
+
+        policy_acts = extract_activations(policy_intermediates)
+        vf_acts = extract_activations(vf_intermediates)
 
         metrics: LogDict
         metrics = {}
         metrics.update(
             {
                 f"metrics/dormant_neurons_policy_{log_name}": log_value
-                for log_name, log_value in get_dormant_neuron_logs(actor_acts).items()
+                for log_name, log_value in get_dormant_neuron_logs(policy_acts).items()
             }
         )
-        for key, value in actor_acts.items():
+        for key, value in policy_acts.items():
             metrics[f"metrics/srank_policy_{key}"] = compute_srank(value)
 
         metrics.update(
@@ -316,7 +322,3 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             metrics[f"metrics/srank_vf_{key}"] = compute_srank(value)
 
         return self, metrics
-
-    @override
-    def get_metrics(self, data: Rollout) -> tuple[Self, LogDict]:
-        return self._get_metrics_inner(data)

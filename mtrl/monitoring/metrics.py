@@ -26,43 +26,30 @@ def compute_srank(
     return srank
 
 
-def extract_activations(
-    network_dict: Intermediates, activation_key: str = "__call__"
-) -> LayerActivationsDict:
+def extract_activations(network_dict: Intermediates) -> LayerActivationsDict:
     def recursive_extract(
         d: Intermediates, current_path: list[str] = []
     ) -> LayerActivationsDict:
         activations = {}
         if isinstance(d, dict):
-            # If this dictionary has '__call__', store its activation
-            # but only if it's not the top-level / 'final' object.
-            if activation_key in d:
-                if len(current_path) != 0:
-                    layer_name = "_".join(current_path)
-                    layer_activations = d[activation_key]
-                    assert isinstance(layer_activations, tuple)
-
-                    # HACK: assume only 1 output, might need to be changed if the networks
-                    # start returning multiple outputs
-                    activations[layer_name] = layer_activations[0]
-            # Recurse through other keys
             for k, v in d.items():
-                if k != activation_key:  # Skip '__call__' in recursion
-                    assert isinstance(v, dict)
+                if isinstance(v, dict):
                     sub_activations = recursive_extract(v, current_path + [k])
                     activations.update(sub_activations)
+                else:
+                    assert isinstance(v, tuple)
+                    # HACK: assuming every module only has 1 output
+                    activations[k] = v[0]
         return activations
 
-    # Skip the first key/value pair which at the top level is always the parent Flax module.
-    first_value = next(iter(network_dict.values()))
-    assert isinstance(first_value, dict)
-    return recursive_extract(first_value)
+    return recursive_extract(network_dict)
 
 
 def get_dormant_neuron_logs(
     layer_activations: LayerActivationsDict, dormant_neuron_threshold: float = 0.1
 ) -> LogDict:
-    """Compute the dormant neuron ratio per layer using Equation 1 from "The Dormant Neuron Phenomenon in Deep Reinforcement Learning" (Sokar et al., 2023; https://proceedings.mlr.press/v202/sokar23a/sokar23a.pdf).
+    """Compute the dormant neuron ratio per layer using Equation 1 from
+    "The Dormant Neuron Phenomenon in Deep Reinforcement Learning" (Sokar et al., 2023; https://proceedings.mlr.press/v202/sokar23a/sokar23a.pdf).
 
     Adapted from https://github.com/google/dopamine/blob/master/dopamine/labs/redo/tfagents/sac_train_eval.py#L563"""
 
