@@ -372,7 +372,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     @jax.jit
     def _get_intermediates(
         self, data: ReplayBufferSamples
-    ) -> tuple[Intermediates, Intermediates]:
+    ) -> tuple[Self, Intermediates, Intermediates]:
         key, critic_activations_key = jax.random.split(self.key, 2)
 
         actions_dist: distrax.Distribution
@@ -388,13 +388,15 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         self = self.replace(key=key)
 
         # HACK: Explicitly using the generated name of the Vmap Critic module here.
-        return actor_state["intermediates"], critic_state["intermediates"][
-            "VmapQValueFunction_0"
-        ]
+        return (
+            self,
+            actor_state["intermediates"],
+            critic_state["intermediates"]["VmapQValueFunction_0"],
+        )
 
     @override
     def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
-        actor_intermediates, critic_intermediates = self._get_intermediates(data)
+        self, actor_intermediates, critic_intermediates = self._get_intermediates(data)
 
         actor_acts = extract_activations(actor_intermediates)
         critic_acts = extract_activations(critic_intermediates)
