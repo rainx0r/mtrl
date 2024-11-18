@@ -21,8 +21,8 @@ dependencies = [
 ignore = ["F722"]
 ignore-init-module-imports = true
 
-[tool.setuptools]
-packages = ["mtrl"]
+[tool.setuptools.packages.find]
+include = ["mtrl", "mtrl.*"]
 
 [tool.uv.sources]
 metaworld = { git = "https://github.com/reginald-mclean/Metaworld", rev = "release" }
