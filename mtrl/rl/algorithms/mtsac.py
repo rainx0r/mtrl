@@ -376,6 +376,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         key, critic_activations_key = jax.random.split(self.key, 2)
 
         actions_dist: distrax.Distribution
+        batch_size = data.observations.shape[0]
         actions_dist, actor_state = self.actor.apply_fn(
             self.actor.params, data.observations, mutable="intermediates"
         )
@@ -385,13 +386,21 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             self.critic.params, data.observations, actions, mutable="intermediates"
         )
 
+        actor_intermediates = jax.tree.map(
+            lambda x: x.reshape(batch_size, -1), actor_state["intermediates"]
+        )
+        critic_intermediates = jax.tree.map(
+            lambda x: x.reshape(self.num_critics, batch_size, -1),
+            critic_state["intermediates"]["VmapQValueFunction_0"],
+        )
+
         self = self.replace(key=key)
 
         # HACK: Explicitly using the generated name of the Vmap Critic module here.
         return (
             self,
-            actor_state["intermediates"],
-            critic_state["intermediates"]["VmapQValueFunction_0"],
+            actor_intermediates,
+            critic_intermediates,
         )
 
     @override

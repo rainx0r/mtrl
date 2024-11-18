@@ -9,14 +9,6 @@ from mtrl.config.nn import MOOREConfig
 from .base import MLP
 
 
-def _orthogonal_1d_f(carry, x):
-    v = jnp.expand_dims(x.transpose(1, 0, 2), axis=1)
-    w = v - ((jnp.einsum("bnk,bkn->bn", v, carry)) @ carry)
-    wnorm = w / jnp.linalg.norm(w, axis=2, keepdims=True)
-    carry = jnp.concatenate((carry, wnorm), axis=1)
-    return carry, wnorm
-
-
 class OrthogonalLayer1D(nn.Module):
     num_experts: int
 
@@ -26,26 +18,19 @@ class OrthogonalLayer1D(nn.Module):
     ) -> Float[Array, "batch_size num_experts dim"]:
         chex.assert_rank(x, 3)
 
-        init = jnp.expand_dims(
+        basis = jnp.expand_dims(
             x[:, 0, :] / jnp.linalg.norm(x[:, 0, :], axis=1, keepdims=True), axis=1
         )
-        carry, _ = jax.lax.scan(
-            _orthogonal_1d_f,
-            init=init,
-            xs=x.transpose(1, 0, 2)[1:],
-            length=self.num_experts - 1,
-        )
-        chex.assert_equal_shape(x, carry)
 
-        return carry
+        for i in range(1, self.num_experts):
+            v = jnp.expand_dims(x[:, i, :], axis=1)  # (batch_size, 1, dim)
+            w = v - ((v @ basis.transpose(0, 2, 1)) @ basis)
+            wnorm = w / jnp.linalg.norm(w, axis=2, keepdims=True)
+            basis = jnp.concatenate((basis, wnorm), axis=1)
 
-        # for i in range(1, x.shape[1]):
-        #     v = jnp.expand_dims(x[:, i, :], axis=1)
-        #     w = v - ((jnp.einsum("bnk,bkn->bn", v, init)) @ init)
-        #     wnorm = w / jnp.linalg.norm(w, axis=2, keepdims=True)
-        #     init = jnp.concatenate((init, wnorm), axis=1)
-        #
-        # return init
+        chex.assert_equal_shape((x, basis))
+
+        return basis
 
 
 class MOORENetwork(nn.Module):
@@ -72,14 +57,14 @@ class MOORENetwork(nn.Module):
 
         experts_out = nn.vmap(
             MLP,
-            variable_axes={"params": 0},
+            variable_axes={"params": 0, "intermediates": 1},
             split_rngs={"params": True, "dropout": True},
             in_axes=None,  # pyright: ignore [reportArgumentType]
             out_axes=-2,
             axis_size=self.config.num_experts,
         )(
             self.config.width,
-            self.config.depth - 1,
+            self.config.depth,
             self.config.width,
             self.config.activation,
             self.config.kernel_init(),
@@ -89,6 +74,7 @@ class MOORENetwork(nn.Module):
         experts_out = OrthogonalLayer1D(self.config.num_experts)(experts_out)
         features_out = jnp.einsum("bnk,bn->bk", experts_out, task_embedding)
         features_out = self.config.activation(features_out)
+        self.sow("intermediates", "torso_output", features_out)
 
         # MH
         x = nn.vmap(
@@ -105,7 +91,6 @@ class MOORENetwork(nn.Module):
             use_bias=self.config.use_bias,
         )(x)
 
-        # 3) Collect the output from the appropriate head for each input
         task_indices = task_idx.argmax(axis=-1)
         x = x[jnp.arange(batch_dim), task_indices]
 

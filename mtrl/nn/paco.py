@@ -37,7 +37,7 @@ class PaCoNetwork(nn.Module):
             bias_init=self.config.bias_init(),
         )(task_idx)
 
-        for _ in range(self.config.depth):
+        for i in range(self.config.depth):
             x = CompositionalDense(self.config.num_parameter_sets)(
                 self.config.width,
                 use_bias=self.config.use_bias,
@@ -46,6 +46,7 @@ class PaCoNetwork(nn.Module):
             )(x)
             x = jnp.einsum("bkn,bk->bn", x, w_tau)
             x = self.config.activation(x)
+            self.sow("intermediates", f"paco_layer_{i}", x)
 
         x = CompositionalDense(self.config.num_parameter_sets)(
             self.head_dim,

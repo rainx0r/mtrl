@@ -66,6 +66,7 @@ class FiLMNetwork(nn.Module):
                 x * film_gammas_and_betas[..., i, 0, :]
                 + film_gammas_and_betas[..., i, 1, :]
             )
+            self.sow("intermediates", f"encoder_layer_{i}", x)
         x = nn.Dense(
             self.config.embedding_dim,
             kernel_init=self.config.kernel_init(),
@@ -78,6 +79,7 @@ class FiLMNetwork(nn.Module):
         )
 
         torso_input = jnp.concatenate((encoder_out, task_embedding), axis=-1)
+        self.sow("intermediates", "encoder_output", torso_input)
         chex.assert_shape(
             torso_input,
             (*x.shape[:-1], self.config.embedding_dim + self.config.embedding_dim),
@@ -93,6 +95,7 @@ class FiLMNetwork(nn.Module):
             use_bias=self.config.use_bias,
             head_kernel_init=self.head_kernel_init,
             head_bias_init=self.head_bias_init,
+            name="torso",
         )(torso_input)
         chex.assert_shape(torso_output, (*x.shape[:-1], self.head_dim))
 

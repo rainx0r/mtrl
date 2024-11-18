@@ -283,6 +283,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
 
     @jax.jit
     def _get_intermediates(self, data: Rollout) -> tuple[Intermediates, Intermediates]:
+        batch_size = data.observations.shape[0]
+
         _, policy_state = self.policy.apply_fn(
             self.policy.params, data.observations, capture_intermediates=True
         )
@@ -292,7 +294,15 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             data.observations,
             capture_intermediates=True,
         )
-        return policy_state["intermediates"], vf_state["intermediates"]
+
+        actor_intermediates = jax.tree.map(
+            lambda x: x.reshape(batch_size, -1), policy_state["intermediates"]
+        )
+        critic_intermediates = jax.tree.map(
+            lambda x: x.reshape(batch_size, -1), vf_state["intermediates"]
+        )
+
+        return actor_intermediates, critic_intermediates
 
     @override
     def get_metrics(self, data: Rollout) -> tuple[Self, LogDict]:
