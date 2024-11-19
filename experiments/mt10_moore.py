@@ -25,12 +25,10 @@ class Args:
 def main() -> None:
     args = tyro.cli(Args)
 
-    EXPERIMENT_NAME = "mt10_moore"
-
     experiment = Experiment(
-        exp_name=EXPERIMENT_NAME,
+        exp_name="mt10_moore",
         seed=args.seed,
-        data_dir=args.data_dir / EXPERIMENT_NAME,
+        data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,

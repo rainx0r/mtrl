@@ -45,9 +45,12 @@ class Experiment:
         self._wandb_enabled = False
         self._timestamp = str(int(time.time()))
 
+    def _get_data_dir(self) -> pathlib.Path:
+        return self.data_dir / f"{self._timestamp}_{self.exp_name}_{self.seed}"
+
     def _get_latest_checkpoint_metadata(self) -> CheckpointMetadata | None:
         checkpoint_manager = ocp.CheckpointManager(
-            pathlib.Path(self.data_dir / "checkpoints").absolute(),
+            pathlib.Path(self._get_data_dir() / "checkpoints").absolute(),
             item_names=("metadata",),
             options=ocp.CheckpointManagerOptions(
                 max_to_keep=self.max_checkpoints_to_keep,
@@ -81,7 +84,7 @@ class Experiment:
             run_id = f"{self._timestamp}_{self.exp_name}_{self.seed}"
 
         wandb.init(
-            dir=str(self.data_dir), id=run_id, name=self.exp_name, **wandb_kwargs
+            dir=str(self._get_data_dir()), id=run_id, name=self.exp_name, **wandb_kwargs
         )
 
     def run(self) -> None:
@@ -116,7 +119,7 @@ class Experiment:
                 checkpoint_items += ("buffer",)
 
             checkpoint_manager = ocp.CheckpointManager(
-                pathlib.Path(self.data_dir / "checkpoints").absolute(),
+                pathlib.Path(self._get_data_dir() / "checkpoints").absolute(),
                 item_names=checkpoint_items,
                 options=ocp.CheckpointManagerOptions(
                     max_to_keep=self.max_checkpoints_to_keep,
