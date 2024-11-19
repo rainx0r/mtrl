@@ -24,7 +24,7 @@ class Args:
 def main() -> None:
     args = tyro.cli(Args)
 
-    EXPERIMENT_NAME = f"mt10_mtmhsac_{args.seed}"
+    EXPERIMENT_NAME = "mt10_mtmhsac"
 
     experiment = Experiment(
         exp_name=EXPERIMENT_NAME,
