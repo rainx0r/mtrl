@@ -46,7 +46,7 @@ class Experiment:
         self._timestamp = str(int(time.time()))
 
     def _get_data_dir(self) -> pathlib.Path:
-        return self.data_dir / f"{self._timestamp}_{self.exp_name}_{self.seed}"
+        return self.data_dir / f"{self.exp_name}_{self.seed}"
 
     def _get_latest_checkpoint_metadata(self) -> CheckpointMetadata | None:
         checkpoint_manager = ocp.CheckpointManager(
