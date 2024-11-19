@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class Checkpoint(TypedDict):
     agent: "Algorithm"
     buffer: NotRequired[ReplayBufferCheckpoint]
-    envs: EnvCheckpoint
+    env_states: EnvCheckpoint
     rngs: RNGCheckpoint
     metadata: CheckpointMetadata
 

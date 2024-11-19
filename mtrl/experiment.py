@@ -100,7 +100,7 @@ class Experiment:
                 if is_off_policy:
                     buffer_checkpoint = ckpt["buffer"]  # pyright: ignore [reportTypedDictNotRequiredAccess]
 
-                envs_checkpoint = ckpt["envs"]
+                envs_checkpoint = ckpt["env_states"]
                 load_env_checkpoints(envs, envs_checkpoint)
 
                 random.setstate(ckpt["rngs"]["python_rng_state"])
