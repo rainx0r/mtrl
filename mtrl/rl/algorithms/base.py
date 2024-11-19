@@ -79,6 +79,7 @@ class Algorithm(
         config: TrainingConfigType,
         envs: gym.vector.VectorEnv,
         env_config: EnvConfig,
+        run_timestamp: str,
         seed: int = 1,
         track: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
@@ -113,6 +114,7 @@ class OffPolicyAlgorithm(
         config: OffPolicyTrainingConfig,
         envs: gym.vector.VectorEnv,
         env_config: EnvConfig,
+        run_timestamp: str,
         seed: int = 1,
         track: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
@@ -129,7 +131,7 @@ class OffPolicyAlgorithm(
 
         if checkpoint_metadata is not None:
             start_step = checkpoint_metadata["step"]
-            episodes_ended = checkpoint_metadata["episodes"]
+            episodes_ended = checkpoint_metadata["episodes_ended"]
 
         replay_buffer = self.spawn_replay_buffer(env_config, config, seed)
         if buffer_checkpoint is not None:
@@ -246,6 +248,7 @@ class OffPolicyAlgorithm(
                                 envs,
                                 global_step,
                                 episodes_ended,
+                                run_timestamp,
                                 buffer=replay_buffer,
                             ),
                             metrics=eval_metrics,
@@ -282,6 +285,7 @@ class OnPolicyAlgorithm(
         config: OnPolicyTrainingConfig,
         envs: gym.vector.VectorEnv,
         env_config: EnvConfig,
+        run_timestamp: str,
         seed: int = 1,
         track: bool = True,
         checkpoint_manager: ocp.CheckpointManager | None = None,
@@ -298,7 +302,7 @@ class OnPolicyAlgorithm(
 
         if checkpoint_metadata is not None:
             start_step = checkpoint_metadata["step"]
-            episodes_ended = checkpoint_metadata["episodes"]
+            episodes_ended = checkpoint_metadata["episodes_ended"]
 
         rollout_buffer = self.spawn_rollout_buffer(env_config, config, seed)
         # TODO:
@@ -457,6 +461,7 @@ class OnPolicyAlgorithm(
                             envs,
                             global_step,
                             episodes_ended,
+                            run_timestamp,
                             # buffer=replay_buffer, TODO:
                         ),
                         metrics=eval_metrics,

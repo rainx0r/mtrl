@@ -51,8 +51,9 @@ class Rollout(NamedTuple):
 
 
 class CheckpointMetadata(TypedDict):
+    timestamp: str
     step: int
-    episodes: int
+    episodes_ended: int
 
 
 class RNGCheckpoint(TypedDict):

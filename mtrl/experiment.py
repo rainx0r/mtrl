@@ -3,6 +3,7 @@
 import pathlib
 import random
 from dataclasses import dataclass
+import time
 
 import jax
 import numpy as np
@@ -12,6 +13,7 @@ import wandb
 from mtrl.checkpoint import (
     Checkpoint,
     get_checkpoint_restore_args,
+    get_metadata_only_restore_args,
     load_env_checkpoints,
 )
 from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig, TrainingConfig
@@ -41,11 +43,46 @@ class Experiment:
 
     def __post_init__(self) -> None:
         self._wandb_enabled = False
+        self._timestamp = str(int(time.time()))
+
+    def _get_latest_checkpoint_metadata(self) -> CheckpointMetadata | None:
+        checkpoint_manager = ocp.CheckpointManager(
+            pathlib.Path(self.data_dir / "checkpoints").absolute(),
+            item_names=("metadata",),
+            options=ocp.CheckpointManagerOptions(
+                max_to_keep=self.max_checkpoints_to_keep,
+                create=True,
+                best_fn=lambda x: x[self.best_checkpoint_metric],
+            ),
+        )
+        if checkpoint_manager.latest_step() is not None:
+            ckpt: Checkpoint = checkpoint_manager.restore(  # pyright: ignore [reportAssignmentType]
+                checkpoint_manager.latest_step(),
+                args=get_metadata_only_restore_args(),
+            )
+            return ckpt["metadata"]
+        else:
+            return None
 
     def enable_wandb(self, **wandb_kwargs) -> None:
         self._wandb_enabled = True
 
-        wandb.init(dir=str(self.data_dir), **wandb_kwargs)
+        latest_ckpt_metadata = self._get_latest_checkpoint_metadata()
+        if latest_ckpt_metadata is not None and self.resume:
+            existing_run_timestamp = latest_ckpt_metadata.get("timestamp")
+            if not existing_run_timestamp:
+                print(
+                    "WARNING: Resume is on, a checkpoint was found, but there's no timestamp in the checkpoint."
+                )
+                run_id = f"{self.exp_name}_{self.seed}"
+            else:
+                run_id = f"{existing_run_timestamp}_{self.exp_name}_{self.seed}"
+        else:
+            run_id = f"{self._timestamp}_{self.exp_name}_{self.seed}"
+
+        wandb.init(
+            dir=str(self.data_dir), id=run_id, name=self.exp_name, **wandb_kwargs
+        )
 
     def run(self) -> None:
         if jax.device_count("gpu") < 1 and jax.device_count("tpu") < 1:
@@ -115,6 +152,8 @@ class Experiment:
                 checkpoint_metadata: CheckpointMetadata | None = ckpt["metadata"]
                 assert checkpoint_metadata is not None
 
+                self._timestamp = checkpoint_metadata.get("timestamp", self._timestamp)
+
                 print(f"Loaded checkpoint at step {checkpoint_metadata['step']}")
 
         # Track number of params
@@ -125,6 +164,7 @@ class Experiment:
             config=self.training_config,
             envs=envs,
             env_config=self.env,
+            run_timestamp=self._timestamp,
             seed=self.seed,
             track=self._wandb_enabled,
             checkpoint_manager=checkpoint_manager,

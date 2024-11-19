@@ -40,6 +40,7 @@ def get_checkpoint_save_args(
     envs: gym.vector.VectorEnv,
     total_steps: int,
     episodes_ended: int,
+    run_timestamp: str,
     buffer: MultiTaskReplayBuffer | None = None,
 ) -> ocp.args.CheckpointArgs:
     if buffer is not None:
@@ -62,6 +63,7 @@ def get_checkpoint_save_args(
             {
                 "step": total_steps,
                 "episodes_ended": episodes_ended,
+                "timestamp": run_timestamp,
             }
         ),
     )
@@ -89,3 +91,7 @@ def get_checkpoint_restore_args(
         ),
         metadata=ocp.args.JsonRestore(),
     )
+
+
+def get_metadata_only_restore_args():
+    return ocp.args.Composite(metadata=ocp.args.JsonRestore())

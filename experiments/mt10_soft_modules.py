@@ -66,8 +66,6 @@ def main() -> None:
             project=args.wandb_project,
             entity=args.wandb_entity,
             config=experiment,
-            name=experiment.exp_name,
-            id=f"{experiment.exp_name}_{experiment.seed}",
             resume="allow",
         )
 
