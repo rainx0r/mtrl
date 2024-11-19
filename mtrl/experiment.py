@@ -4,8 +4,9 @@ import pathlib
 import random
 from dataclasses import dataclass
 
-import orbax.checkpoint as ocp
+import jax
 import numpy as np
+import orbax.checkpoint as ocp
 import wandb
 
 from mtrl.checkpoint import (
@@ -47,6 +48,11 @@ class Experiment:
         wandb.init(dir=str(self.data_dir), **wandb_kwargs)
 
     def run(self) -> None:
+        if jax.device_count("gpu") < 1 and jax.device_count("tpu") < 1:
+            raise RuntimeError(
+                "No accelerator found, aborting. Devices: %s" % jax.devices()
+            )
+
         envs = self.env.spawn(seed=self.seed)
 
         algorithm_cls = get_algorithm_for_config(self.algorithm)
