@@ -19,6 +19,7 @@ class Args:
     wandb_project: str | None = None
     wandb_entity: str | None = None
     data_dir: Path = Path("./experiment_results")
+    resume: bool = False
 
 
 def main() -> None:
@@ -47,7 +48,6 @@ def main() -> None:
                 )
             ),
             num_critics=2,
-            use_task_weights=True,
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),
@@ -55,7 +55,7 @@ def main() -> None:
             batch_size=1280,
         ),
         checkpoint=True,
-        resume=False,
+        resume=args.resume,
     )
 
     if args.track:

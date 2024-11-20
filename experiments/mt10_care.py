@@ -38,17 +38,19 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=CAREConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
+                    num_tasks=10,
+                    num_experts=6,
+                    optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=CAREConfig(
                     num_tasks=10,
+                    num_experts=6,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
             num_critics=2,
-            use_task_weights=True,
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),

@@ -86,7 +86,7 @@ class CAREConfig(NeuralNetworkConfig):
     embedding_dim: int = 50
     """The dimensionality of the context embedding."""
 
-    num_experts: int = 4
+    num_experts: int = 6
     """The number of experts in CARE's task-dependent MoE observation encoder."""
 
 
