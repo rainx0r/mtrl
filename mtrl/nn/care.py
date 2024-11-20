@@ -41,6 +41,7 @@ class CARENetwork(nn.Module):
             bias_init=self.config.bias_init(),
             use_bias=self.config.use_bias,
             activation_fn=self.config.activation,
+            name="task_embedding_mlp",
         )(task_embedding)
 
         attention_weights = MLP(
@@ -51,12 +52,13 @@ class CARENetwork(nn.Module):
             bias_init=self.config.bias_init(),
             use_bias=self.config.use_bias,
             activation_fn=self.config.activation,
+            name="task_embedding_attn_mlp",
         )(task_embedding)
         chex.assert_shape(
             attention_weights, (*task_idx.shape[:-1], self.config.num_experts)
         )
         attention_weights = jax.nn.softmax(
-            attention_weights / self.temperature, axis=-1
+            attention_weights / self.config.encoder_temperature, axis=-1
         )
 
         moe_out = nn.vmap(
@@ -77,7 +79,7 @@ class CARENetwork(nn.Module):
             name="moe_mlp",
         )(x)
         chex.assert_shape(
-            moe_out, (self.config.num_experts, *x.shape[:-1], self.config.embedding_dim)
+            moe_out, (*x.shape[:-1], self.config.num_experts, self.config.embedding_dim)
         )
 
         encoder_out = jnp.einsum("bne,bn->be", moe_out, attention_weights)
