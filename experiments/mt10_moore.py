@@ -38,15 +38,18 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=MOOREConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
-                )
+                    num_tasks=10, optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0)
+                ),
+                log_std_min=-10,
+                log_std_max=2,
             ),
             critic_config=QValueFunctionConfig(
                 network_config=MOOREConfig(
                     num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
+                    optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0),
                 )
             ),
+            temperature_optimizer_config=OptimizerConfig(lr=1e-4),
             num_critics=2,
             use_task_weights=True,
         ),

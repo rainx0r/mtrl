@@ -50,9 +50,8 @@ class MOORENetwork(nn.Module):
         # Task ID embedding
         task_embedding = nn.Dense(
             self.config.num_experts,
-            use_bias=self.config.use_bias,
+            use_bias=False,
             kernel_init=self.config.kernel_init(),
-            bias_init=self.config.bias_init(),
         )(task_idx)
 
         experts_out = nn.vmap(
@@ -70,10 +69,11 @@ class MOORENetwork(nn.Module):
             self.config.kernel_init(),
             self.config.bias_init(),
             self.config.use_bias,
+            activate_last=False,
         )(x)
         experts_out = OrthogonalLayer1D(self.config.num_experts)(experts_out)
         features_out = jnp.einsum("bnk,bn->bk", experts_out, task_embedding)
-        features_out = self.config.activation(features_out)
+        features_out = jax.nn.tanh(features_out)
         self.sow("intermediates", "torso_output", features_out)
 
         # MH
