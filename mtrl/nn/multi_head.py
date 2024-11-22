@@ -12,7 +12,6 @@ class MultiHeadNetwork(nn.Module):
     head_dim: int
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
-    activate_last: bool = False
     normalize_layer: bool = False
 
     # TODO: support variable width?
@@ -42,10 +41,6 @@ class MultiHeadNetwork(nn.Module):
         # 2) Create a head for each task. Pass *every* input through *every* head
         # because we assume the batch dim is not necessarily a task dimension
 
-        # TODO: runtime of this can be reduced significantly if we assume that
-        # instead of a batch dim we have a task dim. In that case, `in_axes=0`, `out_axes=0`.
-        # however this would mess up inference where we might want to have batch size 1 and select the right head
-        # with task_idx.
         x = nn.vmap(
             nn.Dense,
             variable_axes={"params": 0},
@@ -63,8 +58,5 @@ class MultiHeadNetwork(nn.Module):
         # 3) Collect the output from the appropriate head for each input
         task_indices = task_idx.argmax(axis=-1)
         x = x[jnp.arange(batch_dim), task_indices]
-
-        if self.activate_last:
-            x = self.config.activation(x)
 
         return x

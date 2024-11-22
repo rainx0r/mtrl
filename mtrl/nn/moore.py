@@ -9,28 +9,23 @@ from mtrl.config.nn import MOOREConfig
 from .base import MLP
 
 
-class OrthogonalLayer1D(nn.Module):
-    num_experts: int
+def orthogonal_1d(
+    x: Float[Array, "batch_size num_experts dim"], num_experts: int
+) -> Float[Array, "batch_size num_experts dim"]:
+    chex.assert_rank(x, 3)
 
-    @nn.compact
-    def __call__(
-        self, x: Float[Array, "batch_size num_experts dim"]
-    ) -> Float[Array, "batch_size num_experts dim"]:
-        chex.assert_rank(x, 3)
+    basis = jnp.expand_dims(
+        x[:, 0, :] / (jnp.linalg.norm(x[:, 0, :], axis=1, keepdims=True) + 1e-8), axis=1
+    )
 
-        basis = jnp.expand_dims(
-            x[:, 0, :] / jnp.linalg.norm(x[:, 0, :], axis=1, keepdims=True), axis=1
-        )
+    for i in range(1, num_experts):
+        v = jnp.expand_dims(x[:, i, :], axis=1)  # (batch_size, 1, dim)
+        w = v - ((v @ basis.transpose(0, 2, 1)) @ basis)
+        wnorm = w / (jnp.linalg.norm(w, axis=2, keepdims=True) + 1e-8)
+        basis = jnp.concatenate((basis, wnorm), axis=1)
 
-        for i in range(1, self.num_experts):
-            v = jnp.expand_dims(x[:, i, :], axis=1)  # (batch_size, 1, dim)
-            w = v - ((v @ basis.transpose(0, 2, 1)) @ basis)
-            wnorm = w / jnp.linalg.norm(w, axis=2, keepdims=True)
-            basis = jnp.concatenate((basis, wnorm), axis=1)
-
-        chex.assert_equal_shape((x, basis))
-
-        return basis
+    chex.assert_equal_shape((x, basis))
+    return basis
 
 
 class MOORENetwork(nn.Module):
@@ -54,6 +49,7 @@ class MOORENetwork(nn.Module):
             kernel_init=self.config.kernel_init(),
         )(task_idx)
 
+        # MOORE torso
         experts_out = nn.vmap(
             MLP,
             variable_axes={"params": 0, "intermediates": 1},
@@ -63,7 +59,7 @@ class MOORENetwork(nn.Module):
             axis_size=self.config.num_experts,
         )(
             self.config.width,
-            self.config.depth,
+            self.config.depth - 1,
             self.config.width,
             self.config.activation,
             self.config.kernel_init(),
@@ -71,7 +67,7 @@ class MOORENetwork(nn.Module):
             self.config.use_bias,
             activate_last=False,
         )(x)
-        experts_out = OrthogonalLayer1D(self.config.num_experts)(experts_out)
+        experts_out = orthogonal_1d(experts_out, num_experts=self.config.num_experts)
         features_out = jnp.einsum("bnk,bn->bk", experts_out, task_embedding)
         features_out = jax.nn.tanh(features_out)
         self.sow("intermediates", "torso_output", features_out)
@@ -89,7 +85,7 @@ class MOORENetwork(nn.Module):
             kernel_init=self.head_kernel_init,
             bias_init=self.head_bias_init,
             use_bias=self.config.use_bias,
-        )(x)
+        )(features_out)
 
         task_indices = task_idx.argmax(axis=-1)
         x = x[jnp.arange(batch_dim), task_indices]

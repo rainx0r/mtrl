@@ -9,7 +9,7 @@ def CompositionalDense(num_parameter_sets: int):
     return nn.vmap(
         nn.Dense,
         variable_axes={"params": 0},
-        split_rngs={"params": True, "dropout": True},
+        split_rngs={"params": True},
         in_axes=None,  # pyright: ignore [reportArgumentType]
         out_axes=-2,
         axis_size=num_parameter_sets,
