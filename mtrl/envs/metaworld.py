@@ -15,7 +15,7 @@ from metaworld.evaluation import evaluation
 
 @dataclass(frozen=True)
 class MetaworldConfig(EnvConfig):
-    reward_func_version: str | None = None
+    reward_func_version: str = "v2"
     num_eval_episodes: int = 50
 
     @cached_property
@@ -111,4 +111,5 @@ class MetaworldConfig(EnvConfig):
             use_one_hot=self.use_one_hot,
             terminate_on_success=self.terminate_on_success,
             vector_strategy="async",
-        )  # , reward_function_version=self.reward_func_version)
+            reward_function_version=self.reward_func_version,
+        )
