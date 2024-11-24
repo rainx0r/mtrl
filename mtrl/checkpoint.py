@@ -11,6 +11,7 @@ from mtrl.rl.buffers import MultiTaskReplayBuffer
 from mtrl.types import (
     CheckpointMetadata,
     EnvCheckpoint,
+    LogDict,
     RNGCheckpoint,
     ReplayBufferCheckpoint,
 )
@@ -33,6 +34,21 @@ def checkpoint_envs(envs: gym.vector.VectorEnv) -> list[tuple[str, dict]]:
 
 def load_env_checkpoints(envs: gym.vector.VectorEnv, env_ckpts: list[tuple[str, dict]]):
     envs.call("load_checkpoint", env_ckpts)
+
+
+def get_last_agent_checkpoint_save_args(
+    agent: "Algorithm", metrics: dict[str, float]
+) -> ocp.args.CheckpointArgs:
+    return ocp.args.Composite(
+        agent=ocp.args.PyTreeSave(agent), metadata=ocp.args.JsonSave(metrics)
+    )
+
+
+def get_agent_checkpoint_restore_args(agent: "Algorithm") -> ocp.args.CheckpointArgs:
+    return ocp.args.Composite(
+        agent=ocp.args.PyTreeRestore(agent),
+        metadata=ocp.args.JsonRestore(),
+    )
 
 
 def get_checkpoint_save_args(
@@ -71,7 +87,7 @@ def get_checkpoint_save_args(
 
 def get_checkpoint_restore_args(
     agent: "Algorithm", buffer: MultiTaskReplayBuffer | None = None
-):
+) -> ocp.args.CheckpointArgs:
     if buffer is not None:
         rb_ckpt = buffer.checkpoint()
         buffer_args = ocp.args.Composite(
@@ -93,5 +109,5 @@ def get_checkpoint_restore_args(
     )
 
 
-def get_metadata_only_restore_args():
+def get_metadata_only_restore_args() -> ocp.args.CheckpointArgs:
     return ocp.args.Composite(metadata=ocp.args.JsonRestore())

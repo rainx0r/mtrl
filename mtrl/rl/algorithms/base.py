@@ -251,7 +251,10 @@ class OffPolicyAlgorithm(
                                 run_timestamp,
                                 buffer=replay_buffer,
                             ),
-                            metrics=eval_metrics,
+                            metrics={
+                                k.removeprefix("charts/"): v
+                                for k, v in eval_metrics.items()
+                            },
                         )
         return self
 
@@ -464,7 +467,10 @@ class OnPolicyAlgorithm(
                             run_timestamp,
                             # buffer=replay_buffer, TODO:
                         ),
-                        metrics=eval_metrics,
+                        metrics={
+                            k.removeprefix("charts/"): v
+                            for k, v in eval_metrics.items()
+                        },
                     )
 
         return self

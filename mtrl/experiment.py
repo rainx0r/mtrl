@@ -13,6 +13,7 @@ import wandb
 from mtrl.checkpoint import (
     Checkpoint,
     get_checkpoint_restore_args,
+    get_last_agent_checkpoint_save_args,
     get_metadata_only_restore_args,
     load_env_checkpoints,
 )
@@ -38,11 +39,12 @@ class Experiment:
 
     checkpoint: bool = True
     max_checkpoints_to_keep: int = 5
-    best_checkpoint_metric: str = "charts/mean_success_rate"
+    best_checkpoint_metric: str = "mean_success_rate"
     resume: bool = False
 
     def __post_init__(self) -> None:
         self._wandb_enabled = False
+        self._wandb_run_id: str | None = None
         self._timestamp = str(int(time.time()))
 
     def _get_data_dir(self) -> pathlib.Path:
@@ -83,6 +85,7 @@ class Experiment:
         else:
             run_id = f"{self._timestamp}_{self.exp_name}_{self.seed}"
 
+        self._wandb_run_id = run_id
         wandb.init(
             dir=str(self._get_data_dir()), id=run_id, name=self.exp_name, **wandb_kwargs
         )
@@ -163,7 +166,8 @@ class Experiment:
         if self._wandb_enabled:
             wandb.config.update(algorithm.get_num_params())
 
-        algorithm.train(
+        # Train
+        agent = algorithm.train(
             config=self.training_config,
             envs=envs,
             env_config=self.env,
@@ -174,3 +178,50 @@ class Experiment:
             checkpoint_metadata=checkpoint_metadata,
             buffer_checkpoint=buffer_checkpoint,
         )
+
+        # Cleanup
+        if self._wandb_enabled:
+            if self.checkpoint:
+                mean_success_rate, mean_returns, mean_success_per_task = (
+                    self.env.evaluate(envs, agent)
+                )
+                final_metrics = {
+                    "mean_success_rate": float(mean_success_rate),
+                    "mean_evaluation_return": float(mean_returns),
+                } | {
+                    f"{task_name}_success_rate": float(success_rate)
+                    for task_name, success_rate in mean_success_per_task.items()
+                }
+                assert checkpoint_manager is not None
+                checkpoint_manager.save(
+                    self.training_config.total_steps + 1,
+                    args=get_last_agent_checkpoint_save_args(agent, final_metrics),
+                    metrics=final_metrics,
+                )
+                checkpoint_manager.wait_until_finished()
+
+                # Log final model checkpoint
+                assert wandb.run is not None
+                final_ckpt_artifact = wandb.Artifact(
+                    f"{wandb.run.id}_final_agent_checkpoint", type="model"
+                )
+                final_ckpt_dir = checkpoint_manager._get_save_directory(
+                    self.training_config.total_steps + 1, checkpoint_manager.directory
+                )
+                final_ckpt_artifact.add_dir(str(final_ckpt_dir))
+                wandb.log_artifact(final_ckpt_artifact)
+
+                # Log best model checkpoint (by mean success rate)
+                best_step = checkpoint_manager.best_step()
+                assert best_step is not None
+                best_ckpt_artifact = wandb.Artifact(
+                    f"{wandb.run.id}_best_agent_checkpoint", type="model"
+                )
+                best_ckpt_dir = checkpoint_manager._get_save_directory(
+                    best_step, checkpoint_manager.directory
+                )
+                best_ckpt_artifact.add_dir(str(best_ckpt_dir))
+                wandb.log_artifact(best_ckpt_artifact)
+
+        if checkpoint_manager is not None:
+            checkpoint_manager.close()
