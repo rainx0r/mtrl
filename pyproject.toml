@@ -3,7 +3,7 @@ name = "mtrl"
 version = "0.1.0"
 description = "Codebase for ablating MTRL"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12, <3.13"
 dependencies = [
     "distrax>=0.1.5",
     "flax>=0.9.0",

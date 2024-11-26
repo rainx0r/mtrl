@@ -88,6 +88,7 @@ class CAREConfig(NeuralNetworkConfig):
 
     num_experts: int = 6
     """The number of experts in CARE's task-dependent MoE observation encoder."""
+    # 6 for MT10, 10 for MT50
 
 
 @dataclass(frozen=True, kw_only=True)

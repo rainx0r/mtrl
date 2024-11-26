@@ -25,13 +25,15 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_care_v1",
+        exp_name="mt10_care_v1_no_gcrl",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
             reward_func_version="v1",
+            num_goals=1,
+            num_eval_episodes=5,
         ),
         algorithm=MTSACConfig(
             num_tasks=10,

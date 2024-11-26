@@ -17,6 +17,7 @@ from metaworld.evaluation import evaluation
 class MetaworldConfig(EnvConfig):
     reward_func_version: str = "v2"
     num_eval_episodes: int = 50
+    num_goals: int = 50
 
     @cached_property
     @override
@@ -112,4 +113,5 @@ class MetaworldConfig(EnvConfig):
             terminate_on_success=self.terminate_on_success,
             vector_strategy="async",
             reward_function_version=self.reward_func_version,
+            num_goals=self.num_goals,
         )

@@ -21,7 +21,7 @@ class CARENetwork(nn.Module):
         task_idx = x[..., -self.config.num_tasks :]
         x = x[..., : -self.config.num_tasks]
 
-        # Encoder
+        # Task Encoder
         # TODO: This should be replaced with a pretrained NLP model eventually
         # for language description embeddings
         task_embedding = nn.Embed(
@@ -44,6 +44,7 @@ class CARENetwork(nn.Module):
             name="task_embedding_mlp",
         )(task_embedding)
 
+        # CARE weights
         attention_weights = MLP(
             width=self.config.encoder_width,
             depth=self.config.encoder_depth,
@@ -61,6 +62,7 @@ class CARENetwork(nn.Module):
             attention_weights / self.config.encoder_temperature, axis=-1
         )
 
+        # CARE Mixture of Encoders
         moe_out = nn.vmap(
             MLP,
             variable_axes={"params": 0},
@@ -81,7 +83,6 @@ class CARENetwork(nn.Module):
         chex.assert_shape(
             moe_out, (*x.shape[:-1], self.config.num_experts, self.config.embedding_dim)
         )
-
         encoder_out = jnp.einsum("bne,bn->be", moe_out, attention_weights)
         chex.assert_shape(encoder_out, (*x.shape[:-1], self.config.embedding_dim))
 

@@ -39,14 +39,12 @@ def main() -> None:
             actor_config=ContinuousActionPolicyConfig(
                 network_config=CAREConfig(
                     num_tasks=10,
-                    num_experts=6,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=CAREConfig(
                     num_tasks=10,
-                    num_experts=6,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
