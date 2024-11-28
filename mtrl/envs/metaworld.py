@@ -18,6 +18,7 @@ class MetaworldConfig(EnvConfig):
     reward_func_version: str = "v2"
     num_eval_episodes: int = 50
     num_goals: int = 50
+    reward_normalization_method : str | None = None
 
     @cached_property
     @override
@@ -114,4 +115,5 @@ class MetaworldConfig(EnvConfig):
             vector_strategy="async",
             reward_function_version=self.reward_func_version,
             num_goals=self.num_goals,
+            reward_normalization_method=self.reward_normalization_method
         )
