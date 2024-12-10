@@ -26,12 +26,13 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_moore",
+        exp_name="mt10_moore_v1_task_weights_true",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
+            reward_func_version='v1'
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
@@ -51,6 +52,7 @@ def main() -> None:
             ),
             temperature_optimizer_config=OptimizerConfig(lr=1e-4),
             num_critics=2,
+            use_task_weights=True
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),
