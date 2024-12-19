@@ -26,7 +26,7 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_film",
+        exp_name="mt10_film_task_weights_false",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
@@ -38,7 +38,8 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=FiLMConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
+                    num_tasks=10,
+                    optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
@@ -47,6 +48,7 @@ def main() -> None:
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
+            use_task_weights=False,
             num_critics=2,
         ),
         training_config=OffPolicyTrainingConfig(

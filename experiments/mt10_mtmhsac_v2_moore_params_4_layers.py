@@ -49,16 +49,16 @@ def main() -> None:
                 network_config=MultiHeadConfig(
                     num_tasks=10,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
-                    depth=3,
-                    width=800
+                    depth=4,
+                    width=650
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=MultiHeadConfig(
                     num_tasks=10,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
-                    depth=3,
-                    width=800
+                    depth=4,
+                    width=650
                 )
             ),
             num_critics=2,

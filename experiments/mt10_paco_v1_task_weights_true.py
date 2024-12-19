@@ -1,19 +1,10 @@
-import os
-
-os.environ["XLA_FLAGS"] = ("--xla_cpu_multi_thread_eigen=false "
-                           "intra_op_parallelism_threads=4")
-
-os.environ["OPENBLAS_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
-os.environ["OMP_NUM_THREAD"] = "4"
-
 from dataclasses import dataclass
 from pathlib import Path
 
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import MultiHeadConfig
+from mtrl.config.nn import PaCoConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
@@ -35,40 +26,37 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_moore_params",
+        exp_name="mt10_paco_v1_task_weights_true",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
+            reward_func_version='v1',
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=MultiHeadConfig(
-                    num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
-                    depth=3,
-                    width=800
+                network_config=PaCoConfig(
+                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
-                network_config=MultiHeadConfig(
+                network_config=PaCoConfig(
                     num_tasks=10,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
-                    depth=3,
-                    width=800
                 )
             ),
             num_critics=2,
+            use_task_weights=True
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),
             buffer_size=int(1e6),
             batch_size=1280,
         ),
-        checkpoint=False,
+        checkpoint=True,
         resume=args.resume,
     )
 

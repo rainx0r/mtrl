@@ -13,6 +13,7 @@ class MultiHeadNetwork(nn.Module):
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
     normalize_layer: bool = False
+    skip_connection: bool = False
 
     # TODO: support variable width?
 
@@ -24,10 +25,12 @@ class MultiHeadNetwork(nn.Module):
         batch_dim = x.shape[0]
         assert self.config.num_tasks is not None, "Number of tasks must be provided."
         task_idx = x[..., -self.config.num_tasks :]
-
+        skip = None
         for i in range(self.config.depth):
             if self.normalize_layer and i == 0:
                 x = L2Normalize()(x)
+            if self.skip_connection and x.shape[1] == self.config.width:
+                skip = x
             x = nn.Dense(
                 self.config.width,
                 name=f"layer_{i}",
@@ -35,6 +38,9 @@ class MultiHeadNetwork(nn.Module):
                 bias_init=self.config.bias_init(),
                 use_bias=self.config.use_bias,
             )(x)
+            if self.skip_connection and skip is not None:
+                x = x + skip
+                skip = None
             x = self.config.activation(x)
             self.sow("intermediates", f"torso_layer_{i}", x)
 

@@ -35,12 +35,13 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_moore_params",
+        exp_name="mt10_mtmhsac_moore_params_v2_3_layers_use_task_weights",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
+            reward_func_version='v2'
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
@@ -62,6 +63,7 @@ def main() -> None:
                 )
             ),
             num_critics=2,
+            use_task_weights=True
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),
