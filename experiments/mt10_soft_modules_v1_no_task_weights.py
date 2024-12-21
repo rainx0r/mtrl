@@ -49,7 +49,7 @@ def main() -> None:
                 )
             ),
             num_critics=2,
-            use_task_weights=True,
+            use_task_weights=False,
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),

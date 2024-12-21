@@ -4,7 +4,7 @@ from pathlib import Path
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import SoftModulesConfig
+from mtrl.config.nn import MultiHeadConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
@@ -26,26 +26,27 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_softmodules_rf_v1",
+        exp_name="mt10_mtmhsac_v1_no_grad_clip_normalized_rewards_exponential",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
-            reward_func_version="v1",
+            reward_func_version='v1',
+            reward_normalization_method='exponential'
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=SoftModulesConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
+                network_config=MultiHeadConfig(
+                    num_tasks=10, optimizer=OptimizerConfig()
                 )
             ),
             critic_config=QValueFunctionConfig(
-                network_config=SoftModulesConfig(
+                network_config=MultiHeadConfig(
                     num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
+                    optimizer=OptimizerConfig(),
                 )
             ),
             num_critics=2,
