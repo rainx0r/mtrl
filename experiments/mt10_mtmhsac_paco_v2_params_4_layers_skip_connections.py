@@ -35,7 +35,7 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_paco_params_v2_3_layers",
+        exp_name="mt10_mtmhsac_paco_params_v2_4_layers_skip_connections",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
