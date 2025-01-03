@@ -13,7 +13,7 @@ class MultiHeadNetwork(nn.Module):
     head_kernel_init: jax.nn.initializers.Initializer = jax.nn.initializers.he_normal()
     head_bias_init: jax.nn.initializers.Initializer = jax.nn.initializers.zeros
     normalize_layer: bool = False
-    skip_connection: bool = False
+    skip_connection: bool = True
 
     # TODO: support variable width?
 

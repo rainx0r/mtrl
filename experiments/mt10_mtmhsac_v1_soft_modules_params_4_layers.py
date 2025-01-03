@@ -35,7 +35,7 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_v1_sm_params_4_layers",
+        exp_name="mt10_mtmhsac_v1_sm_params_4_layers_no_grad_norm",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
@@ -48,14 +48,13 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=MultiHeadConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0),
+                    num_tasks=10,
                     depth=4, width=460
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=MultiHeadConfig(
                     num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=4, width=460
                 )
             ),
