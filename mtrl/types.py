@@ -20,8 +20,8 @@ type Intermediates = dict[str, tuple[LayerActivations, ...] | "Intermediates"]
 
 class Agent(Protocol):
     def eval_action(
-        self, observation: npt.NDArray[np.float64]
-    ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray]]: ...
+        self, observations: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
 
 
 class ReplayBufferSamples(NamedTuple):

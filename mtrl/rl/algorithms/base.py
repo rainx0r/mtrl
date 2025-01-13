@@ -67,8 +67,8 @@ class Algorithm(
 
     @abc.abstractmethod
     def eval_action(
-        self, observation: Observation
-    ) -> tuple[Action, AuxPolicyOutputs]: ...
+        self, observations: Observation
+    ) -> Action: ...
 
     # @abc.abstractmethod
     # def get_initial_parameters(self) -> tuple[Dict, Dict, Dict]: ...

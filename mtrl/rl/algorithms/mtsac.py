@@ -202,8 +202,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         return self.replace(key=key), jax.device_get(action)
 
     @override
-    def eval_action(self, observation: Observation) -> tuple[Action, AuxPolicyOutputs]:
-        return jax.device_get(_eval_action(self.actor, observation)), {}
+    def eval_action(self, observations: Observation) -> Action:
+        return jax.device_get(_eval_action(self.actor, observation))
 
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:

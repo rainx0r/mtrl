@@ -182,8 +182,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         )
 
     @override
-    def eval_action(self, observation: Observation) -> tuple[Action, AuxPolicyOutputs]:
-        return jax.device_get(_eval_action(self.policy, observation)), {}
+    def eval_action(self, observations: Observation) -> Action:
+        return jax.device_get(_eval_action(self.policy, observation))
 
     def update_policy(self, data: Rollout) -> tuple[Self, LogDict]:
         key, policy_loss_key = jax.random.split(self.key, 2)
