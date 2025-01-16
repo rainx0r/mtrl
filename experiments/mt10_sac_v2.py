@@ -26,7 +26,7 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac",
+        exp_name="mt10_sac_v2",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
