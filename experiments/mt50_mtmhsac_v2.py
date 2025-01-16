@@ -25,7 +25,7 @@ class Args:
 def main() -> None:
     args = tyro.cli(Args)
 
-    num_tasks=50
+    num_tasks = 50
 
     experiment = Experiment(
         exp_name="mt50_mtmhsac_v2",
@@ -41,22 +41,22 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=MultiHeadConfig(
-                    num_tasks=num_tasks, optimizer=OptimizerConfig()
+                    num_tasks=num_tasks, optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=MultiHeadConfig(
                     num_tasks=num_tasks,
-                    optimizer=OptimizerConfig(),
+                    optimizer=OptimizerConfig(max_grad_norm=1.0),
                 )
             ),
             num_critics=2,
-            use_task_weights=False
+            use_task_weights=False,
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(1e8),
-            buffer_size=int(200_000 * num_tasks),
-            batch_size=int(128*num_tasks),
+            buffer_size=int(100_000 * num_tasks),
+            batch_size=int(128 * num_tasks),
             evaluation_frequency=int(1_000_000 // 500),
         ),
         checkpoint=True,
