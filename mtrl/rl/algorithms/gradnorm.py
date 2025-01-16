@@ -291,22 +291,6 @@ class GradNorm(OffPolicyAlgorithm[GradNormConfig]):
     def eval_action(self, observation: Observation) -> tuple[Action, AuxPolicyOutputs]:
         return jax.device_get(_eval_action(self.actor, observation)), {}
 
-    # @staticmethod
-    # @jax.jit
-    # def renormalise_weights(train_state: TrainState, num_tasks: int): # general but mainly used for critic
-    #     '''The original paper renormalises the weights of gradnormed layer'''
-    #     last_layer_name = train_state.params["params"]["VmapQValueFunction_0"]["MultiHeadNetwork_0"].keys()[-1]
-    #     last_layer = _critic.params["params"]["VmapQValueFunction_0"]["MultiHeadNetwork_0"][last_layer_name]
-    #     weights, unravel_fn = jax.flatten_util.ravel_pytree(last_layer)
-    #     uf_ll = unfreeze(weights)[last_layer_name]
-    #     # uf_ll[last_layer_name] = 
-    #
-    #     # We want weights for each task to avg to 1 so total weights should equal num tasks w(i+1) = Tw(i)/sum{W(i)}
-    #     new_params = unravel_fn( (weights / (jnp.sum(weights) + 1e-12) ) * num_tasks)
-    #     train_state = train_state.replace(params=new_params)
-    #     return train_state
-
-
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples, original_losses) -> tuple[Self, LogDict]:
         task_ids = data.observations[..., -self.num_tasks :]
@@ -527,9 +511,6 @@ class GradNorm(OffPolicyAlgorithm[GradNormConfig]):
 
         flat_params_crit, _ = flatten_util.ravel_pytree(self.critic.params)
         logs["metrics/critic_params_norm"] = jnp.linalg.norm(flat_params_crit)
-
-        # logs["metrics/gn_weights"] = wandb.Histogram(logs["metrics/gn_weights"])
-        # logs["metrics/task_losses"] = wandb.Histogram(logs["metrics/task_losses"])
 
         critic: CriticTrainState
         critic = critic.replace(
@@ -779,123 +760,3 @@ class GradNorm(OffPolicyAlgorithm[GradNormConfig]):
         return self
 
 
-# '''
-#     @staticmethod
-#     @partial(jax.jit, static_argnums=(4,))  # Specify the index of num_tasks argument
-#     def compute_gradnorm(
-#         critic: CriticTrainState,
-#         data: ReplayBufferSamples, 
-#         task_ids: Float[Array, "batch num_tasks"],
-#         # alpha_val: Float[Array, "batch 1"],
-#         next_q_value: Float[Array, "batch 1"],
-#         num_tasks: int,
-#         original_losses: Array
-#         ) -> tuple[Array, LogDict]:
-#
-#         def get_task_grad(task_idx: int) -> Array:
-#             task_mask = task_ids[:, task_idx] == 1
-#             
-#             def task_loss(params: FrozenDict) -> Float[Array, ""]:
-#                 q_pred = critic.apply_fn(params, data.observations, data.actions)
-#                 loss = 0.5 * ((q_pred - next_q_value) ** 2 * task_mask[:, None]).mean()
-#                 return loss
-#                 
-#             loss, grad = jax.value_and_grad(task_loss)(critic.params)
-#             flat_grad, _ = jax.flatten_util.ravel_pytree(grad)
-#             return flat_grad, loss
-#
-#
-#         # Get gradients for each task using vmap
-#         task_grads, task_losses = jax.vmap(get_task_grad)(jnp.arange(num_tasks))
-#    
-#         # GRADNORM ALGORITHM:
-#         #     - Save original loss [X]
-#         #     - Calculate improvement fraction as: (initial loss/loss now) remember div by 0 so add 1e-15 or something
-#         #     - Normalise losses by weighting them based on if they're improving too quickly or not quick enough
-#         #     - Use parameter alpha to determine how much to weight by
-#         #     - Change fixed alpha to being an actual hyperparameter, maybe choose a different letter?
-#         #
-#         #     \tilde{L}_i(t) = L_i(t) / L_i(0) # Loss ratio, aka inverse training rate
-#         #     r_i(t) = \tilde{L}_i(t) / E_{task}[\tilde{L}_i(t)] # The *relative* inverse training rate
-#         #     ... Define G (task grad) and \bar{G} (avg grad) similarly
-#         #
-#         # Initialize $w_i(0)=1 \forall i$
-#         # Initialize network weights $\mathcal{W}$
-#         # Pick value for $\alpha>0$ and pick the weights $W$ (usually the
-#         #     final layer of weights which are shared between tasks)
-#         # for $t=0$ to max_train_steps $^{-10}$
-#         #     Input batch $x_i$ to compute $L_i(t) \forall i$ and
-#         #         $L(t)=\sum_i w_i(t) L_i(t)$ [standard forward pass]
-#         #     Compute $G_W^{(i)}(t)$ and $r_i(t) \forall i$
-#         #     Compute $\bar{G}_W(t)$ by averaging the $G_W^{(i)}(t)$
-#         #     Compute $L_{\text {grad }}=\sum_i\left|G_W^{(i)}(t)-\bar{G}_W(t) \times\left[r_i(t)\right]^\alpha\right|_1$
-#         #     Compute GradNorm gradients $\nabla_{w_i} L_{\text {grad }}$, keeping
-#         #         targets $\bar{G}_W(t) \times\left[r_i(t)\right]^\alpha$ constant
-#         #     Compute standard gradients $\nabla_{\mathcal{W}} L(t)$
-#         #     Update $w_i(t) \mapsto w_i(t+1)$ using $\nabla_{w_i} L_{\text {grad }}$
-#         #     Update $\mathcal{W}(t) \mapsto \mathcal{W}(t+1)$ using $\nabla_{\mathcal{W}} L(t)$ [standard
-#         #         backward pass]
-#         #     Renormalize $w_i(t+1)$ so that $\sum_i w_i(t+1)=T$
-#         # end for
-#
-#         @jax.jit
-#         def gradnorm(alpha=0.1):
-#             # Should only be nan at the start, could replace this with flag for added robustness
-#             _original_losses = jax.lax.select(jnp.all(jnp.isnan(original_losses)), jax.lax.stop_gradient(task_losses), original_losses)
-#
-#             def loss_fn(params):
-#                 improvement = task_losses / (_original_losses + 1e-12) # \tilde{L}_i(t)
-#
-#                 grad_norms = jnp.linalg.norm(task_grads, axis=1, ord=1)  # G_W
-#                 avg_grad_norm = jnp.mean(grad_norms)  # \bar{G}_W(t)
-#                 avg_impr = jnp.mean(improvement, axis=0) # E_{task}[\tilde{L}_i(t)]
-#
-#                 rit = improvement / avg_impr
-#                 l_grad = jnp.sum(jnp.linalg.norm(grad_norms - jax.lax.stop_gradient(avg_grad_norm * (rit)**alpha), ord=1))# jnp.sum(task_losses - (avg_grad_norm * (rit)**alpha ) )
-#                 return l_grad
-#
-#             loss, grad = jax.value_and_grad(loss_fn)(critic.params)
-#             return loss, grad, _original_losses
-#         
-#         loss, final_grad, _original_losses = gradnorm(alpha=0.)
-#         print(loss, _original_losses.mean())
-#
-#         # Unravel back to pytree
-#         # _, unravel_fn = jax.flatten_util.ravel_pytree(critic.params)
-#         # final_grad = unravel_fn(grad)
-#         # final_grad = grad
-#             
-#         # Metrics 
-#         def vmap_cos_sim(grads, num_tasks):
-#             def calc_cos_sim(selected_grad, grads):
-#
-#                 new_cos_sim  = jnp.array([ # Removed the jnp.mean
-#                                 jnp.sum(selected_grad * grads, axis=1) / (
-#                                         jnp.linalg.norm(selected_grad) * jnp.linalg.norm(grads, axis=1) + 1e-12
-#                                         )
-#                                 ])
-#
-#                 return new_cos_sim
-#
-#             cos_sim_mat = jax.vmap(calc_cos_sim, in_axes=(0,None), out_axes=-1)(grads, grads)
-#             mask = jnp.triu(jnp.ones((num_tasks, num_tasks)), k=1) # Get upper triangle
-#             num_unique = jnp.sum(mask)
-#
-#             masked_cos_sim = mask * cos_sim_mat
-#             avg_cos_sim = jnp.sum(masked_cos_sim.flatten()) / num_unique # n in upper triangle
-#             return avg_cos_sim
-#         
-#         # avg_cos_sim = vmap_cos_sim(task_grads, num_tasks)
-#         # new_cos_sim = vmap_cos_sim(final_grads, num_tasks)
-#         metrics = {
-#             # "metrics/n_grad_conflicts": total_grad_conflicts,
-#             # "metrics/avg_critic_grad_magnitude": jnp.mean(jnp.linalg.norm(final_grads, axis=1)),
-#             # "metrics/avg_critic_grad_magnitude_before_grad_surgery": jnp.mean(jnp.linalg.norm(task_grads, axis=1)),
-#         #     "metrics/avg_cosine_similarity":  avg_cos_sim,
-#         # "metrics/avg_cosine_similarity_diff": avg_cos_sim - new_cos_sim
-#             
-#         }       
-#         return final_grad, metrics, _original_losses
-#
-#
-# '''
