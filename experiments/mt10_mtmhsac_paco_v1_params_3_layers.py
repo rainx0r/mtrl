@@ -1,11 +1,11 @@
 import os
 
 os.environ["XLA_FLAGS"] = ("--xla_cpu_multi_thread_eigen=false "
-                           "intra_op_parallelism_threads=4")
+                           "intra_op_parallelism_threads=8")
 
-os.environ["OPENBLAS_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
-os.environ["OMP_NUM_THREAD"] = "4"
+os.environ["OPENBLAS_NUM_THREADS"] = "8"
+os.environ["MKL_NUM_THREADS"] = "8"
+os.environ["OMP_NUM_THREAD"] = "8"
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,13 +35,13 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_paco_params_v1_3_layers",
+        exp_name="mt10_mtmhsac_paco_params_v1_3_layers_no_grad_norm",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
-            reward_func_version='v1'
+            reward_func_version='v1',
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
@@ -49,7 +49,6 @@ def main() -> None:
             actor_config=ContinuousActionPolicyConfig(
                 network_config=MultiHeadConfig(
                     num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=3,
                     width=885
                 )
@@ -57,7 +56,6 @@ def main() -> None:
             critic_config=QValueFunctionConfig(
                 network_config=MultiHeadConfig(
                     num_tasks=10,
-                    optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=3,
                     width=885
                 )

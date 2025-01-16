@@ -4,8 +4,7 @@ from pathlib import Path
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import MOOREConfig
-from mtrl.config.optim import OptimizerConfig
+from mtrl.config.nn import MultiHeadConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
 from mtrl.experiment import Experiment
@@ -26,33 +25,23 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_moore_v1_task_weights_false",
+        exp_name="sanity_mtmhsac_noclipgradnorm_mt10_v2",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
-            reward_func_version='v1'
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0)
-                ),
-                log_std_min=-10,
-                log_std_max=2,
+                network_config=MultiHeadConfig(num_tasks=10)
             ),
             critic_config=QValueFunctionConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10,
-                    optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0),
-                )
+                network_config=MultiHeadConfig(num_tasks=10)
             ),
-            temperature_optimizer_config=OptimizerConfig(lr=1e-4),
             num_critics=2,
-            use_task_weights=False
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),

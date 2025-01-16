@@ -1,10 +1,19 @@
+import os
+
+os.environ["XLA_FLAGS"] = ("--xla_cpu_multi_thread_eigen=false "
+                           "intra_op_parallelism_threads=6")
+
+os.environ["OPENBLAS_NUM_THREADS"] = "6"
+os.environ["MKL_NUM_THREADS"] = "6"
+os.environ["OMP_NUM_THREAD"] = "6"
+
 from dataclasses import dataclass
 from pathlib import Path
 
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import MOOREConfig
+from mtrl.config.nn import MultiHeadConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
@@ -26,33 +35,31 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_moore_v1_task_weights_false",
+        exp_name="mt10_mtmhsac_sm_params_3_layers_use_task_weights",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
-            reward_func_version='v1'
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0)
-                ),
-                log_std_min=-10,
-                log_std_max=2,
-            ),
-            critic_config=QValueFunctionConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10,
-                    optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0),
+                network_config=MultiHeadConfig(
+                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0),
+                    depth=3, width=550
                 )
             ),
-            temperature_optimizer_config=OptimizerConfig(lr=1e-4),
+            critic_config=QValueFunctionConfig(
+                network_config=MultiHeadConfig(
+                    num_tasks=10,
+                    optimizer=OptimizerConfig(max_grad_norm=1.0),
+                    depth=3, width=550
+                )
+            ),
             num_critics=2,
-            use_task_weights=False
+            use_task_weights=True
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),

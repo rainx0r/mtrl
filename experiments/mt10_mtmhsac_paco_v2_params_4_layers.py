@@ -50,7 +50,7 @@ def main() -> None:
                     num_tasks=10,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=4,
-                    width=735
+                    width=730
                 )
             ),
             critic_config=QValueFunctionConfig(
@@ -58,7 +58,7 @@ def main() -> None:
                     num_tasks=10,
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=4,
-                    width=735
+                    width=730
                 )
             ),
             num_critics=2,

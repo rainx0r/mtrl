@@ -180,28 +180,33 @@ class Experiment:
         )
 
         # Cleanup
-        if self._wandb_enabled:
-            if self.checkpoint:
-                mean_success_rate, mean_returns, mean_success_per_task = (
-                    self.env.evaluate(envs, agent)
-                )
-                final_metrics = {
-                    "mean_success_rate": float(mean_success_rate),
-                    "mean_evaluation_return": float(mean_returns),
-                } | {
-                    f"{task_name}_success_rate": float(success_rate)
-                    for task_name, success_rate in mean_success_per_task.items()
-                }
-                assert checkpoint_manager is not None
-                checkpoint_manager.save(
-                    self.training_config.total_steps + 1,
-                    args=get_last_agent_checkpoint_save_args(agent, final_metrics),
-                    metrics=final_metrics,
-                )
-                checkpoint_manager.wait_until_finished()
+        if self.checkpoint:
+            mean_success_rate, mean_returns, mean_success_per_task = (
+                self.env.evaluate(envs, agent)
+            )
+            final_metrics = {
+                "mean_success_rate": float(mean_success_rate),
+                "mean_evaluation_return": float(mean_returns),
+            } | {
+                f"{task_name}_success_rate": float(success_rate)
+                for task_name, success_rate in mean_success_per_task.items()
+            }
+            assert checkpoint_manager is not None
+            checkpoint_manager.wait_until_finished()
 
-                # Log final model checkpoint
+            if checkpoint_manager._options.max_to_keep is not None:
+                checkpoint_manager._options.max_to_keep += 1
+            checkpoint_manager.save(
+                self.training_config.total_steps + 1,
+                args=get_last_agent_checkpoint_save_args(agent, final_metrics),
+                metrics=final_metrics,
+            )
+            checkpoint_manager.wait_until_finished()
+
+            # Log final model checkpoint
+            if self._wandb_enabled:
                 assert wandb.run is not None
+                wandb.log(final_metrics, step=self.training_config.total_steps + 1)
                 final_ckpt_artifact = wandb.Artifact(
                     f"{wandb.run.id}_final_agent_checkpoint", type="model"
                 )
@@ -223,5 +228,4 @@ class Experiment:
                 best_ckpt_artifact.add_dir(str(best_ckpt_dir))
                 wandb.log_artifact(best_ckpt_artifact)
 
-        if checkpoint_manager is not None:
             checkpoint_manager.close()

@@ -39,22 +39,19 @@ from mtrl.types import (
 from .base import OffPolicyAlgorithm
 
 
-class MultiTaskTemperature(nn.Module):
-    num_tasks: int
+class Temperature(nn.Module):
     initial_temperature: float = 1.0
 
     def setup(self):
         self.log_alpha = self.param(
             "log_alpha",
             init_fn=lambda _: jnp.full(
-                (self.num_tasks,), jnp.log(self.initial_temperature)
+                (1,), jnp.log(self.initial_temperature)
             ),
         )
 
-    def __call__(
-        self, task_ids: Float[Array, "... num_tasks"]
-    ) -> Float[Array, "... 1"]:
-        return jnp.exp(task_ids @ self.log_alpha.reshape(-1, 1))
+    def __call__(self) -> Float[Array, " 1"]:
+        return jnp.exp(self.log_alpha)
 
 
 class CriticTrainState(TrainState):
@@ -78,31 +75,17 @@ def _eval_action(
     return actor.apply_fn(actor.params, observation).mode()
 
 
-def extract_task_weights(
-    alpha_params: FrozenDict, task_ids: Float[np.ndarray, "... num_tasks"]
-) -> Float[Array, "... 1"]:
-    log_alpha: jax.Array
-    task_weights: jax.Array
-
-    log_alpha = alpha_params["params"]["log_alpha"]  # pyright: ignore [reportAssignmentType]
-    task_weights = jax.nn.softmax(-log_alpha)
-    task_weights = task_ids @ task_weights.reshape(-1, 1)  # pyright: ignore [reportAssignmentType]
-    task_weights *= log_alpha.shape[0]
-    return task_weights
-
-
 @dataclasses.dataclass(frozen=True)
-class MTSACConfig(AlgorithmConfig):
+class SACConfig(AlgorithmConfig):
     actor_config: ContinuousActionPolicyConfig = ContinuousActionPolicyConfig()
     critic_config: QValueFunctionConfig = QValueFunctionConfig()
     temperature_optimizer_config: OptimizerConfig = OptimizerConfig(max_grad_norm=None)
     initial_temperature: float = 1.0
     num_critics: int = 2
     tau: float = 0.005
-    use_task_weights: bool = False
 
 
-class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
+class SAC(OffPolicyAlgorithm[SACConfig]):
     actor: TrainState
     critic: CriticTrainState
     alpha: TrainState
@@ -110,14 +93,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     gamma: float = struct.field(pytree_node=False)
     tau: float = struct.field(pytree_node=False)
     target_entropy: float = struct.field(pytree_node=False)
-    use_task_weights: bool = struct.field(pytree_node=False)
     num_critics: int = struct.field(pytree_node=False)
 
     @override
     @staticmethod
     def initialize(
-        config: MTSACConfig, env_config: EnvConfig, seed: int = 1
-    ) -> "MTSAC":
+        config: SACConfig, env_config: EnvConfig, seed: int = 1
+    ) -> "SAC":
         assert isinstance(
             env_config.action_space, gym.spaces.Box
         ), "Non-box spaces currently not supported."
@@ -161,19 +143,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         print("Critic Arch:", jax.tree_util.tree_map(jnp.shape, critic.params))
         print("Critic Params:", sum(x.size for x in jax.tree.leaves(critic.params)))
 
-        alpha_net = MultiTaskTemperature(config.num_tasks, config.initial_temperature)
-        dummy_task_ids = jnp.array(
-            [np.ones((config.num_tasks,)) for _ in range(config.num_tasks)]
-        )
+        alpha_net = Temperature(config.initial_temperature)
         alpha = TrainState.create(
             apply_fn=alpha_net.apply,
-            params=alpha_net.init(alpha_init_key, dummy_task_ids),
+            params=alpha_net.init(alpha_init_key),
             tx=config.temperature_optimizer_config.spawn(),
         )
 
         target_entropy = -np.prod(env_config.action_space.shape).item()
 
-        return MTSAC(
+        return SAC(
             num_tasks=config.num_tasks,
             actor=actor,
             critic=critic,
@@ -182,7 +161,6 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             gamma=config.gamma,
             tau=config.tau,
             target_entropy=target_entropy,
-            use_task_weights=config.use_task_weights,
             num_critics=config.num_critics,
         )
 
@@ -206,15 +184,12 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
-        task_ids = data.observations[..., -self.num_tasks :]
-
         # --- Critic loss ---
         key, actor_loss_key, critic_loss_key = jax.random.split(self.key, 3)
 
         def update_critic(
             _critic: CriticTrainState,
             alpha_val: Float[Array, "batch 1"],
-            task_weights: Float[Array, "batch 1"] | None = None,
         ) -> tuple[CriticTrainState, LogDict]:
             # Sample a'
             next_actions, next_action_log_probs = self.actor.apply_fn(
@@ -237,16 +212,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 )
 
                 q_pred = self.critic.apply_fn(params, data.observations, data.actions)
-                if self.use_task_weights:
-                    assert task_weights is not None
-                    loss = (
-                        0.5
-                        * (task_weights * (q_pred - next_q_value) ** 2)
-                        .mean(axis=1)
-                        .sum()
-                    )
-                else:
-                    loss = 0.5 * ((q_pred - next_q_value) ** 2).mean(axis=1).sum()
+                loss = 0.5 * ((q_pred - next_q_value) ** 2).mean(axis=1).sum()
                 return loss, q_pred.mean()
 
             (critic_loss_value, qf_values), critic_grads = jax.value_and_grad(
@@ -264,30 +230,21 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
         def update_alpha(
             _alpha: TrainState, log_probs: Float[Array, " batch"]
-        ) -> tuple[
-            TrainState, Float[Array, "batch 1"], Float[Array, "batch 1"] | None, LogDict
-        ]:
+        ) -> tuple[TrainState, Float[Array, "batch 1"], LogDict]:
             def alpha_loss(params: FrozenDict) -> Float[Array, ""]:
                 log_alpha: jax.Array
-                log_alpha = task_ids @ params["params"]["log_alpha"].reshape(-1, 1)  # pyright: ignore [reportAttributeAccessIssue]
-                return (
-                    -log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)
-                ).mean()
+                log_alpha = params["params"]["log_alpha"]   # pyright: ignore [reportAssignmentType]
+                return (-log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)).mean()
 
             alpha_loss_value, alpha_grads = jax.value_and_grad(alpha_loss)(
                 _alpha.params
             )
             _alpha = _alpha.apply_gradients(grads=alpha_grads)
-            alpha_vals = _alpha.apply_fn(_alpha.params, task_ids)
-            if self.use_task_weights:
-                task_weights = extract_task_weights(_alpha.params, task_ids)
-            else:
-                task_weights = None
+            alpha_vals = _alpha.apply_fn(_alpha.params)
 
             return (
                 _alpha,
                 alpha_vals,
-                task_weights,
                 {
                     "losses/alpha_loss": alpha_loss_value,
                     "alpha": jnp.exp(_alpha.params["params"]["log_alpha"]).sum(),  # pyright: ignore [reportReturnType,reportArgumentType]
@@ -302,26 +259,18 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
             # HACK: Putting the other losses / grad updates inside this function for performance,
             # so we can reuse the action_samples / log_probs while also doing alpha loss first
-            _alpha, _alpha_val, task_weights, alpha_logs = update_alpha(
+            _alpha, _alpha_val, alpha_logs = update_alpha(
                 self.alpha, log_probs
             )
             _alpha_val = jax.lax.stop_gradient(_alpha_val)
-            if task_weights is not None:
-                task_weights = jax.lax.stop_gradient(task_weights)
-            _critic, critic_logs = update_critic(self.critic, _alpha_val, task_weights)
+            _critic, critic_logs = update_critic(self.critic, _alpha_val)
             logs = {**alpha_logs, **critic_logs}
 
             q_values = _critic.apply_fn(
                 _critic.params, data.observations, action_samples
             )
             min_qf_values = jnp.min(q_values, axis=0)
-            if task_weights is not None:
-                loss = (
-                    task_weights
-                    * (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values)
-                ).mean()
-            else:
-                loss = (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values).mean()
+            loss = (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values).mean()
             return loss, (_alpha, _critic, logs)
 
         (actor_loss_value, (alpha, critic, logs)), actor_grads = jax.value_and_grad(

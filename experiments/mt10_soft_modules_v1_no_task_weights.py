@@ -4,7 +4,7 @@ from pathlib import Path
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import MOOREConfig
+from mtrl.config.nn import SoftModulesConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
@@ -26,33 +26,30 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_moore_v1_task_weights_false",
+        exp_name="mt10_softmodules_rf_v1",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
             env_id="MT10",
             terminate_on_success=False,
-            reward_func_version='v1'
+            reward_func_version="v1",
         ),
         algorithm=MTSACConfig(
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10, optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0)
-                ),
-                log_std_min=-10,
-                log_std_max=2,
-            ),
-            critic_config=QValueFunctionConfig(
-                network_config=MOOREConfig(
-                    num_tasks=10,
-                    optimizer=OptimizerConfig(lr=3e-4, max_grad_norm=1.0),
+                network_config=SoftModulesConfig(
+                    num_tasks=10, optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
-            temperature_optimizer_config=OptimizerConfig(lr=1e-4),
+            critic_config=QValueFunctionConfig(
+                network_config=SoftModulesConfig(
+                    num_tasks=10,
+                    optimizer=OptimizerConfig(max_grad_norm=1.0),
+                )
+            ),
             num_critics=2,
-            use_task_weights=False
+            use_task_weights=False,
         ),
         training_config=OffPolicyTrainingConfig(
             total_steps=int(2e7),
