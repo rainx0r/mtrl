@@ -75,19 +75,6 @@ def _eval_action(
     return actor.apply_fn(actor.params, observation).mode()
 
 
-def extract_task_weights(
-    alpha_params: FrozenDict, task_ids: Float[np.ndarray, "... num_tasks"]
-) -> Float[Array, "... 1"]:
-    log_alpha: jax.Array
-    task_weights: jax.Array
-
-    log_alpha = alpha_params["params"]["log_alpha"]  # pyright: ignore [reportAssignmentType]
-    task_weights = jax.nn.softmax(-log_alpha)
-    task_weights = task_ids @ task_weights.reshape(-1, 1)  # pyright: ignore [reportAssignmentType]
-    task_weights *= log_alpha.shape[0]
-    return task_weights
-
-
 @dataclasses.dataclass(frozen=True)
 class SACConfig(AlgorithmConfig):
     actor_config: ContinuousActionPolicyConfig = ContinuousActionPolicyConfig()
@@ -197,8 +184,6 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
 
     @jax.jit
     def _update_inner(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
-        task_ids = data.observations[..., -self.num_tasks :]
-
         # --- Critic loss ---
         key, actor_loss_key, critic_loss_key = jax.random.split(self.key, 3)
 
@@ -255,7 +240,7 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
                 _alpha.params
             )
             _alpha = _alpha.apply_gradients(grads=alpha_grads)
-            alpha_vals = _alpha.apply_fn(_alpha.params, task_ids)
+            alpha_vals = _alpha.apply_fn(_alpha.params)
 
             return (
                 _alpha,
