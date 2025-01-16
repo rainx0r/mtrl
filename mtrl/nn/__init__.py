@@ -2,7 +2,7 @@ import flax.linen as nn
 
 import mtrl.config.nn
 
-from .base import MLP as VanillaNetwork
+from .base import VanillaNetwork
 from .care import CARENetwork
 from .film import FiLMNetwork
 from .moore import MOORENetwork

@@ -3,6 +3,8 @@ from collections.abc import Callable
 import flax.linen as nn
 import jax
 
+from mtrl.config.nn import NeuralNetworkConfig
+
 from .utils import name_prefix
 
 
@@ -46,3 +48,26 @@ class MLP(nn.Module):
         if self.activate_last:
             x = self.activation_fn(x)
         return x
+
+
+class VanillaNetwork(nn.Module):
+    config: NeuralNetworkConfig
+
+    head_dim: int
+    head_kernel_init: jax.nn.initializers.Initializer | None = None
+    head_bias_init: jax.nn.initializers.Initializer | None = None
+    activate_last: bool = False
+
+    @nn.compact
+    def __call__(self, x: jax.Array) -> jax.Array:
+        return MLP(
+            head_dim=self.head_dim,
+            width=self.config.width,
+            activation_fn=self.config.activation,
+            kernel_init=self.config.kernel_init(),
+            bias_init=self.config.bias_init(),
+            use_bias=self.config.use_bias,
+            head_kernel_init=self.head_kernel_init,
+            head_bias_init=self.head_bias_init,
+            activate_last=self.activate_last,
+        )(x)
