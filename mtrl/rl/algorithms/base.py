@@ -21,7 +21,6 @@ from mtrl.rl.buffers import MultiTaskReplayBuffer, MultiTaskRolloutBuffer
 from mtrl.types import (
     Action,
     Agent,
-    AuxPolicyOutputs,
     CheckpointMetadata,
     LogDict,
     LogProb,
