@@ -38,13 +38,13 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=NeuralNetworkConfig(
-                    width=907,
+                    width=906,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=NeuralNetworkConfig(
-                    width=907,
+                    width=906,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
