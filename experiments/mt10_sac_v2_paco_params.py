@@ -26,7 +26,7 @@ def main() -> None:
     args = tyro.cli(Args)
 
     experiment = Experiment(
-        exp_name="mt10_sac_v2",
+        exp_name="mt10_sac_v2_paco_params",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
@@ -38,11 +38,13 @@ def main() -> None:
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
                 network_config=NeuralNetworkConfig(
+                    width=907,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
                 network_config=NeuralNetworkConfig(
+                    width=907,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
