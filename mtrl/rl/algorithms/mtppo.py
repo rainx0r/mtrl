@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import numpy as np
 from flax import struct
 from flax.core import FrozenDict
-from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, ValueFunctionConfig
@@ -33,6 +32,7 @@ from mtrl.types import (
 )
 
 from .base import OnPolicyAlgorithm
+from .utils import TrainState
 
 
 @jax.jit
@@ -98,6 +98,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
     entropy_coefficient: float = struct.field(pytree_node=False)
     vf_coefficient: float = struct.field(pytree_node=False)
     normalize_advantages: bool = struct.field(pytree_node=False)
+    split_policy_losses: bool = struct.field(pytree_node=False)
+    split_vf_losses: bool = struct.field(pytree_node=False)
 
     @override
     @staticmethod
@@ -150,6 +152,8 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             entropy_coefficient=config.entropy_coefficient,
             vf_coefficient=config.vf_coefficient,
             normalize_advantages=config.normalize_advantages,
+            split_policy_losses=config.policy_config.network_config.optimizer.requires_split_task_losses,
+            split_vf_losses=config.vf_config.network_config.optimizer.requires_split_task_losses,
         )
 
     @override
@@ -187,13 +191,15 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
     def update_policy(self, data: Rollout) -> tuple[Self, LogDict]:
         key, policy_loss_key = jax.random.split(self.key, 2)
 
-        def policy_loss(params: FrozenDict) -> tuple[Float[Array, ""], LogDict]:
+        def policy_loss(
+            params: FrozenDict, _data: Rollout
+        ) -> tuple[Float[Array, ""], LogDict]:
             action_dist: distrax.Distribution
             new_log_probs: Float[Array, " batch_size"]
 
-            action_dist = self.policy.apply_fn(params, data.observations)
+            action_dist = self.policy.apply_fn(params, _data.observations)
             _, new_log_probs = action_dist.sample_and_log_prob(seed=policy_loss_key)  # pyright: ignore[reportAssignmentType]
-            log_ratio = new_log_probs.reshape(-1, 1) - data.log_probs
+            log_ratio = new_log_probs.reshape(-1, 1) - _data.log_probs
             ratio = jnp.exp(log_ratio)
 
             # For logs
@@ -206,11 +212,11 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             )
 
             if self.normalize_advantages:
-                advantages = (data.advantages - jnp.mean(data.advantages)) / (  # pyright: ignore[reportArgumentType]
-                    jnp.std(data.advantages) + 1e-8  # pyright: ignore[reportArgumentType]
+                advantages = (_data.advantages - jnp.mean(_data.advantages)) / (  # pyright: ignore[reportArgumentType]
+                    jnp.std(_data.advantages) + 1e-8  # pyright: ignore[reportArgumentType]
                 )
             else:
-                advantages = data.advantages
+                advantages = _data.advantages
 
             pg_loss1 = -advantages * ratio  # pyright: ignore[reportOptionalOperand]
             pg_loss2 = -advantages * jnp.clip(  # pyright: ignore[reportOptionalOperand]
@@ -227,10 +233,18 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
                 "losses/clip_fracs": clip_fracs,
             }
 
-        (_, logs), policy_grads = jax.value_and_grad(policy_loss, has_aux=True)(
-            self.policy.params
-        )
-        policy = self.policy.apply_gradients(grads=policy_grads)
+        if self.split_policy_losses:
+            (_, logs), policy_grads = jax.vmap(
+                jax.value_and_grad(policy_loss, has_aux=True),
+                in_axes=(None, 0),
+                out_axes=0,
+            )(self.policy.params, data)
+            policy = self.policy.apply_gradients(grads=policy_grads)
+        else:
+            (_, logs), policy_grads = jax.value_and_grad(policy_loss, has_aux=True)(
+                self.policy.params, data
+            )
+            policy = self.policy.apply_gradients(grads=policy_grads)
 
         return self.replace(policy=policy, key=key), logs
 
@@ -255,10 +269,18 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
                 "losses/values": new_values.mean(),
             }
 
-        (_, logs), vf_grads = jax.value_and_grad(value_function_loss, has_aux=True)(
-            self.value_function.params
-        )
-        value_function = self.value_function.apply_gradients(grads=vf_grads)
+        if self.split_vf_losses:
+            (_, vf_grads), logs = jax.vmap(
+                jax.value_and_grad(value_function_loss, has_aux=True),
+                in_axes=(None, 0),
+                out_axes=0,
+            )(self.value_function.params, data)
+            value_function = self.value_function.apply_gradients(grads=vf_grads)
+        else:
+            (_, logs), vf_grads = jax.value_and_grad(value_function_loss, has_aux=True)(
+                self.value_function.params, data
+            )
+            value_function = self.value_function.apply_gradients(grads=vf_grads)
 
         return self.replace(value_function=value_function), logs
 

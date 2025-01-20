@@ -4,6 +4,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class AlgorithmConfig:
     num_tasks: int
+    multi_task_optimizer = None
     gamma: float = 0.99
 
 
