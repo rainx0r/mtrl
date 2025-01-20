@@ -378,20 +378,21 @@ class MultiTaskRolloutBuffer:
                 advantages[timestep] = last_gae_lamda = (
                     delta + next_nonterminal * gamma * gae_lambda * last_gae_lamda
                 )
-            returns = advantages + self.values
+            returns = (advantages + self.values).transpose(1, 0)
+            advantages = advantages.transpose(1, 0)
         else:
             returns = None
             advantages = None
 
         return Rollout(
-            self.observations,
-            self.actions,
-            self.rewards,
-            self.dones,
-            self.log_probs,
-            self.means,
-            self.stds,
-            self.values,
+            self.observations.transpose(1, 0),
+            self.actions.transpose(1, 0),
+            self.rewards.transpose(1, 0),
+            self.dones.transpose(1, 0),
+            self.log_probs.transpose(1, 0),
+            self.means.transpose(1, 0),
+            self.stds.transpose(1, 0),
+            self.values.transpose(1, 0),
             returns,
             advantages,
         )
