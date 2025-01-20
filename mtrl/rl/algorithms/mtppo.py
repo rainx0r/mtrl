@@ -19,6 +19,7 @@ from mtrl.monitoring.metrics import (
     extract_activations,
     get_dormant_neuron_logs,
 )
+from mtrl.optim.pcgrad import PCGradState
 from mtrl.rl.networks import ContinuousActionPolicy, ValueFunction
 from mtrl.types import (
     Action,
@@ -288,7 +289,28 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
     def _update_inner(self, data: Rollout) -> tuple[Self, LogDict]:
         self, policy_logs = self.update_policy(data)
         self, vf_logs = self.update_value_function(data)
-        return self, policy_logs | vf_logs
+
+        # HACK: PCGrad logs
+        assert isinstance(self.value_function.opt_state, tuple)
+        assert isinstance(self.policy.opt_state, tuple)
+        vf_optim_logs = (
+            {
+                f"metrics/vf_{key}": value
+                for key, value in self.value_function.opt_state[0]._asdict().items()
+            }
+            if isinstance(self.value_function.opt_state[0], PCGradState)
+            else {}
+        )
+        policy_optim_logs = (
+            {
+                f"metrics/policy_{key}": value
+                for key, value in self.policy.opt_state[0]._asdict().items()
+            }
+            if isinstance(self.policy.opt_state[0], PCGradState)
+            else {}
+        )
+
+        return self, policy_logs | vf_logs | vf_optim_logs | policy_optim_logs
 
     @override
     def update(self, data: ReplayBufferSamples | Rollout) -> tuple[Self, LogDict]:

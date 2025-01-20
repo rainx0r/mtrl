@@ -11,8 +11,8 @@ from jaxtyping import Array, Float
 
 class PCGradState(NamedTuple):
     n_grad_conflicts: Float[Array, ""]
-    avg_critic_grad_magnitude: Float[Array, ""]
-    avg_critic_grad_magnitude_before_surgery: Float[Array, ""]
+    avg_grad_magnitude: Float[Array, ""]
+    avg_grad_magnitude_before_surgery: Float[Array, ""]
     avg_cosine_similarity: Float[Array, ""]
     avg_cosine_similarity_diff: Float[Array, ""]
 
@@ -24,8 +24,8 @@ def pcgrad(
         del params
         base_state = PCGradState(
             n_grad_conflicts=jnp.array(0),
-            avg_critic_grad_magnitude=jnp.array(0.0),
-            avg_critic_grad_magnitude_before_surgery=jnp.array(0.0),
+            avg_grad_magnitude=jnp.array(0.0),
+            avg_grad_magnitude_before_surgery=jnp.array(0.0),
             avg_cosine_similarity=jnp.array(0.0)
             if cosine_sim_logs
             else jnp.array(jnp.nan),
@@ -88,8 +88,8 @@ def pcgrad(
 
         new_state = PCGradState(
             n_grad_conflicts=total_grad_conflicts,
-            avg_critic_grad_magnitude=jnp.mean(jnp.linalg.norm(final_grads, axis=1)),
-            avg_critic_grad_magnitude_before_surgery=jnp.mean(
+            avg_grad_magnitude=jnp.mean(jnp.linalg.norm(final_grads, axis=1)),
+            avg_grad_magnitude_before_surgery=jnp.mean(
                 jnp.linalg.norm(flat_task_gradients, axis=1)
             ),
             avg_cosine_similarity=jnp.array(jnp.nan),

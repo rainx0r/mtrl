@@ -453,12 +453,18 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         assert isinstance(self.critic.opt_state, tuple)
         assert isinstance(self.actor.opt_state, tuple)
         critic_optim_logs = (
-            self.critic.opt_state[0]._asdict()
+            {
+                f"metrics/critic_{key}": value
+                for key, value in self.critic.opt_state[0]._asdict().items()
+            }
             if isinstance(self.critic.opt_state[0], PCGradState)
             else {}
         )
         actor_optim_logs = (
-            self.actor.opt_state[0]._asdict()
+            {
+                f"metrics/actor_{key}": value
+                for key, value in self.actor.opt_state[0]._asdict().items()
+            }
             if isinstance(self.actor.opt_state[0], PCGradState)
             else {}
         )
