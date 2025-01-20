@@ -4,7 +4,7 @@ from pathlib import Path
 import tyro
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
-from mtrl.config.nn import NeuralNetworkConfig
+from mtrl.config.nn import VanillaNetworkConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
 from mtrl.envs import MetaworldConfig
@@ -37,13 +37,13 @@ def main() -> None:
             num_tasks=10,
             gamma=0.99,
             actor_config=ContinuousActionPolicyConfig(
-                network_config=NeuralNetworkConfig(
+                network_config=VanillaNetworkConfig(
                     width=906,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
             ),
             critic_config=QValueFunctionConfig(
-                network_config=NeuralNetworkConfig(
+                network_config=VanillaNetworkConfig(
                     width=906,
                     optimizer=OptimizerConfig(max_grad_norm=1.0)
                 )
