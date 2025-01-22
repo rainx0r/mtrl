@@ -20,6 +20,7 @@ from jaxtyping import Array, Float, PRNGKeyArray, PyTree
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import AlgorithmConfig
+from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
     compute_srank,
@@ -524,7 +525,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )
 
     @override
-    def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+    def get_metrics(
+        self, metrics: Metrics, data: ReplayBufferSamples
+    ) -> tuple[Self, LogDict]:
         self, actor_intermediates, critic_intermediates = self._get_intermediates(data)
 
         actor_acts = extract_activations(actor_intermediates)
@@ -532,25 +535,31 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         critic_acts = self._split_critic_activations(critic_acts)
 
         # TODO: None of the dormant neuron logs / srank compute are jitted at the top level
-        metrics: LogDict
-        metrics = {}
-        metrics.update(
-            {
-                f"metrics/dormant_neurons_actor_{log_name}": log_value
-                for log_name, log_value in get_dormant_neuron_logs(actor_acts).items()
-            }
-        )
-        for key, value in actor_acts.items():
-            metrics[f"metrics/srank_actor_{key}"] = compute_srank(value)
-
-        for i, acts in enumerate(critic_acts):
-            metrics.update(
+        logs: LogDict
+        logs = {}
+        if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+            logs.update(
                 {
-                    f"metrics/dormant_neurons_critic_{i}_{log_name}": log_value
-                    for log_name, log_value in get_dormant_neuron_logs(acts).items()
+                    f"metrics/dormant_neurons_actor_{log_name}": log_value
+                    for log_name, log_value in get_dormant_neuron_logs(
+                        actor_acts
+                    ).items()
                 }
             )
-            for key, value in acts.items():
-                metrics[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
+        if metrics.is_enabled(Metrics.SRANK):
+            for key, value in actor_acts.items():
+                logs[f"metrics/srank_actor_{key}"] = compute_srank(value)
 
-        return self, metrics
+        for i, acts in enumerate(critic_acts):
+            if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+                logs.update(
+                    {
+                        f"metrics/dormant_neurons_critic_{i}_{log_name}": log_value
+                        for log_name, log_value in get_dormant_neuron_logs(acts).items()
+                    }
+                )
+            if metrics.is_enabled(Metrics.SRANK):
+                for key, value in acts.items():
+                    logs[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
+
+        return self, logs

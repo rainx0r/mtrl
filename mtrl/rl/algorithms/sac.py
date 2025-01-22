@@ -20,6 +20,7 @@ from jaxtyping import Array, Float, PRNGKeyArray
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import AlgorithmConfig
+from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
     compute_srank,
@@ -45,9 +46,7 @@ class Temperature(nn.Module):
     def setup(self):
         self.log_alpha = self.param(
             "log_alpha",
-            init_fn=lambda _: jnp.full(
-                (1,), jnp.log(self.initial_temperature)
-            ),
+            init_fn=lambda _: jnp.full((1,), jnp.log(self.initial_temperature)),
         )
 
     def __call__(self) -> Float[Array, " 1"]:
@@ -97,15 +96,13 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
 
     @override
     @staticmethod
-    def initialize(
-        config: SACConfig, env_config: EnvConfig, seed: int = 1
-    ) -> "SAC":
-        assert isinstance(
-            env_config.action_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
-        assert isinstance(
-            env_config.observation_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
+    def initialize(config: SACConfig, env_config: EnvConfig, seed: int = 1) -> "SAC":
+        assert isinstance(env_config.action_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
+        assert isinstance(env_config.observation_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
 
         master_key = jax.random.PRNGKey(seed)
         algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
@@ -233,8 +230,10 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
         ) -> tuple[TrainState, Float[Array, "batch 1"], LogDict]:
             def alpha_loss(params: FrozenDict) -> Float[Array, ""]:
                 log_alpha: jax.Array
-                log_alpha = params["params"]["log_alpha"]   # pyright: ignore [reportAssignmentType]
-                return (-log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)).mean()
+                log_alpha = params["params"]["log_alpha"]  # pyright: ignore [reportAssignmentType]
+                return (
+                    -log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)
+                ).mean()
 
             alpha_loss_value, alpha_grads = jax.value_and_grad(alpha_loss)(
                 _alpha.params
@@ -259,9 +258,7 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
 
             # HACK: Putting the other losses / grad updates inside this function for performance,
             # so we can reuse the action_samples / log_probs while also doing alpha loss first
-            _alpha, _alpha_val, alpha_logs = update_alpha(
-                self.alpha, log_probs
-            )
+            _alpha, _alpha_val, alpha_logs = update_alpha(self.alpha, log_probs)
             _alpha_val = jax.lax.stop_gradient(_alpha_val)
             _critic, critic_logs = update_critic(self.critic, _alpha_val)
             logs = {**alpha_logs, **critic_logs}
@@ -352,7 +349,9 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
         )
 
     @override
-    def get_metrics(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
+    def get_metrics(
+        self, metrics: Metrics, data: ReplayBufferSamples
+    ) -> tuple[Self, LogDict]:
         self, actor_intermediates, critic_intermediates = self._get_intermediates(data)
 
         actor_acts = extract_activations(actor_intermediates)
@@ -360,25 +359,31 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
         critic_acts = self._split_critic_activations(critic_acts)
 
         # TODO: None of the dormant neuron logs / srank compute are jitted at the top level
-        metrics: LogDict
-        metrics = {}
-        metrics.update(
-            {
-                f"metrics/dormant_neurons_actor_{log_name}": log_value
-                for log_name, log_value in get_dormant_neuron_logs(actor_acts).items()
-            }
-        )
-        for key, value in actor_acts.items():
-            metrics[f"metrics/srank_actor_{key}"] = compute_srank(value)
-
-        for i, acts in enumerate(critic_acts):
-            metrics.update(
+        logs: LogDict
+        logs = {}
+        if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+            logs.update(
                 {
-                    f"metrics/dormant_neurons_critic_{i}_{log_name}": log_value
-                    for log_name, log_value in get_dormant_neuron_logs(acts).items()
+                    f"metrics/dormant_neurons_actor_{log_name}": log_value
+                    for log_name, log_value in get_dormant_neuron_logs(
+                        actor_acts
+                    ).items()
                 }
             )
-            for key, value in acts.items():
-                metrics[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
+        if metrics.is_enabled(Metrics.SRANK):
+            for key, value in actor_acts.items():
+                logs[f"metrics/srank_actor_{key}"] = compute_srank(value)
 
-        return self, metrics
+        for i, acts in enumerate(critic_acts):
+            if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+                logs.update(
+                    {
+                        f"metrics/dormant_neurons_critic_{i}_{log_name}": log_value
+                        for log_name, log_value in get_dormant_neuron_logs(acts).items()
+                    }
+                )
+            if metrics.is_enabled(Metrics.SRANK):
+                for key, value in acts.items():
+                    logs[f"metrics/srank_critic_{i}_{key}"] = compute_srank(value)
+
+        return self, logs

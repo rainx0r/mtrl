@@ -12,10 +12,11 @@ from flax import struct
 from mtrl.checkpoint import get_checkpoint_save_args
 from mtrl.config.rl import (
     AlgorithmConfig,
-    OnPolicyTrainingConfig,
     OffPolicyTrainingConfig,
+    OnPolicyTrainingConfig,
     TrainingConfig,
 )
+from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
 from mtrl.rl.buffers import MultiTaskReplayBuffer, MultiTaskRolloutBuffer
 from mtrl.types import (
@@ -56,7 +57,7 @@ class Algorithm(
     def update(self, data: DataType) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
-    def get_metrics(self, data: DataType) -> tuple[Self, LogDict]: ...
+    def get_metrics(self, metrics: Metrics, data: DataType) -> tuple[Self, LogDict]: ...
 
     @abc.abstractmethod
     def get_num_params(self) -> dict[str, int]: ...
@@ -65,9 +66,7 @@ class Algorithm(
     def sample_action(self, observation: Observation) -> tuple[Self, Action]: ...
 
     @abc.abstractmethod
-    def eval_action(
-        self, observations: Observation
-    ) -> Action: ...
+    def eval_action(self, observations: Observation) -> Action: ...
 
     # @abc.abstractmethod
     # def get_initial_parameters(self) -> tuple[Dict, Dict, Dict]: ...
@@ -224,8 +223,10 @@ class OffPolicyAlgorithm(
                     if track:
                         wandb.log(eval_metrics, step=total_steps)
 
-                    if config.compute_network_metrics:
-                        self, network_metrics = self.get_metrics(data)
+                    if config.compute_network_metrics.value != 0:
+                        self, network_metrics = self.get_metrics(
+                            config.compute_network_metrics, data
+                        )
 
                         if track:
                             wandb.log(network_metrics, step=total_steps)
@@ -401,9 +402,9 @@ class OnPolicyAlgorithm(
                         self, logs = self.update(minibatch_rollout)
 
                     if config.target_kl is not None:
-                        assert (
-                            "losses/approx_kl" in logs
-                        ), "Algorithm did not provide approximate KL div, but approx_kl is not None."
+                        assert "losses/approx_kl" in logs, (
+                            "Algorithm did not provide approximate KL div, but approx_kl is not None."
+                        )
                         if logs["losses/approx_kl"] > config.target_kl:
                             print(
                                 f"Stopped early at KL {logs['losses/approx_kl']}, ({epoch} epochs)"
@@ -415,8 +416,10 @@ class OnPolicyAlgorithm(
                 if track:
                     wandb.log(logs, step=total_steps)
 
-                if config.compute_network_metrics:
-                    self, metrics = self.get_metrics(rollouts)
+                if config.compute_network_metrics.value != 0:
+                    self, metrics = self.get_metrics(
+                        config.compute_network_metrics, rollouts
+                    )
 
                     if track:
                         wandb.log(metrics, step=total_steps)

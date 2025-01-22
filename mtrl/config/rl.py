@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
+from .utils import Metrics
+
 
 @dataclass(frozen=True)
 class AlgorithmConfig:
     num_tasks: int
-    multi_task_optimizer = None
     gamma: float = 0.99
 
 
@@ -12,7 +13,7 @@ class AlgorithmConfig:
 class TrainingConfig:
     total_steps: int
     evaluation_frequency: int = 200_000 // 500
-    compute_network_metrics: bool = True
+    compute_network_metrics: Metrics = Metrics.ALL
 
     # TODO: Maybe put into its own RewardFilterConfig()?
     reward_filter: str | None = None

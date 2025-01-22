@@ -47,3 +47,13 @@ class Optimizer(enum.Enum):
 
     def __call__(self, learning_rate: float, **kwargs):
         return self.value(learning_rate, **kwargs)
+
+
+class Metrics(enum.Enum):
+    NONE = 0
+    DORMANT_NEURONS = 1
+    SRANK = 2
+    ALL = 3
+
+    def is_enabled(self, other: "Metrics") -> bool:
+        return self.value & other.value == other.value

@@ -11,9 +11,6 @@ from mtrl.envs import MetaworldConfig
 from mtrl.experiment import Experiment
 from mtrl.rl.algorithms import MTSACConfig
 
-import jax
-jax.config.update("jax_debug_nans", True)
-
 
 @dataclass(frozen=True)
 class Args:

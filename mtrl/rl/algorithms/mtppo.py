@@ -13,6 +13,7 @@ from jaxtyping import Array, Float, PRNGKeyArray
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, ValueFunctionConfig
 from mtrl.config.rl import AlgorithmConfig
+from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
     compute_srank,
@@ -348,30 +349,36 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
         return actor_intermediates, critic_intermediates
 
     @override
-    def get_metrics(self, data: Rollout) -> tuple[Self, LogDict]:
+    def get_metrics(self, metrics: Metrics, data: Rollout) -> tuple[Self, LogDict]:
         policy_intermediates, vf_intermediates = self._get_intermediates(data)
 
         policy_acts = extract_activations(policy_intermediates)
         vf_acts = extract_activations(vf_intermediates)
 
-        metrics: LogDict
-        metrics = {}
-        metrics.update(
-            {
-                f"metrics/dormant_neurons_policy_{log_name}": log_value
-                for log_name, log_value in get_dormant_neuron_logs(policy_acts).items()
-            }
-        )
-        for key, value in policy_acts.items():
-            metrics[f"metrics/srank_policy_{key}"] = compute_srank(value)
+        logs: LogDict
+        logs = {}
+        if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+            logs.update(
+                {
+                    f"metrics/dormant_neurons_policy_{log_name}": log_value
+                    for log_name, log_value in get_dormant_neuron_logs(
+                        policy_acts
+                    ).items()
+                }
+            )
+        if metrics.is_enabled(Metrics.SRANK):
+            for key, value in policy_acts.items():
+                logs[f"metrics/srank_policy_{key}"] = compute_srank(value)
 
-        metrics.update(
-            {
-                f"metrics/dead_neurons_vf_{log_name}": log_value
-                for log_name, log_value in get_dormant_neuron_logs(vf_acts).items()
-            }
-        )
-        for key, value in vf_acts.items():
-            metrics[f"metrics/srank_vf_{key}"] = compute_srank(value)
+        if metrics.is_enabled(Metrics.DORMANT_NEURONS):
+            logs.update(
+                {
+                    f"metrics/dead_neurons_vf_{log_name}": log_value
+                    for log_name, log_value in get_dormant_neuron_logs(vf_acts).items()
+                }
+            )
+        if metrics.is_enabled(Metrics.SRANK):
+            for key, value in vf_acts.items():
+                logs[f"metrics/srank_vf_{key}"] = compute_srank(value)
 
-        return self, metrics
+        return self, logs
