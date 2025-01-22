@@ -57,6 +57,7 @@ def main() -> None:
             batch_size=1280,
         ),
         checkpoint=True,
+        max_checkpoints_to_keep=3,
         resume=args.resume,
     )
 
