@@ -7,6 +7,7 @@ from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionCon
 from mtrl.config.nn import MultiHeadConfig
 from mtrl.config.optim import OptimizerConfig
 from mtrl.config.rl import OffPolicyTrainingConfig
+from mtrl.config.utils import Metrics
 from mtrl.envs import MetaworldConfig
 from mtrl.experiment import Experiment
 from mtrl.rl.algorithms import MTSACConfig
@@ -55,6 +56,7 @@ def main() -> None:
             total_steps=int(2e7),
             buffer_size=int(1e6),
             batch_size=1280,
+            compute_network_metrics=Metrics.DORMANT_NEURONS,
         ),
         checkpoint=True,
         max_checkpoints_to_keep=3,
