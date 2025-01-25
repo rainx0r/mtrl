@@ -75,6 +75,7 @@ class PaCoConfig(NeuralNetworkConfig):
 
     num_parameter_sets: int = 5
     """The number of parameter sets. `K` in the paper."""
+    # 5 for MT10, 20 for MT50
 
 
 @dataclass(frozen=True, kw_only=True)
