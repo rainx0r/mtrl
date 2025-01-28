@@ -262,15 +262,17 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             _task_weights: Float[Array, "#batch 1"] | None = None,
         ) -> tuple[
             Float[Array, ""],  # loss
-            Float[Array, ""],  # q_pred_mean
-            Float[Array, ""],  # q_pred_max
-            Float[Array, ""],  # q_pred_min
-            Float[Array, ""],  # next_q_value_mean
-            Float[Array, ""],  # next_q_value_max
-            Float[Array, ""],  # next_q_value_min
-            Float[Array, ""],  # min_qf_next_target_mean
-            Float[Array, ""],  # min_qf_next_target_max
-            Float[Array, ""],  # min_qf_next_target_min
+            tuple[
+                Float[Array, ""],  # q_pred_mean
+                Float[Array, ""],  # q_pred_max
+                Float[Array, ""],  # q_pred_min
+                Float[Array, ""],  # next_q_value_mean
+                Float[Array, ""],  # next_q_value_max
+                Float[Array, ""],  # next_q_value_min
+                Float[Array, ""],  # min_qf_next_target_mean
+                Float[Array, ""],  # min_qf_next_target_max
+                Float[Array, ""],  # min_qf_next_target_min
+            ],
         ]:
             # next_action_log_probs is (B,) shaped because of the sum(axis=1), while Q values are (B, 1)
             min_qf_next_target = jnp.min(
@@ -288,31 +290,35 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 loss = ((q_pred - next_q_value) ** 2).mean()
             return (
                 loss,
-                q_pred.mean(),
-                q_pred.max(),
-                q_pred.min(),
-                next_q_value.mean(),
-                next_q_value.max(),
-                next_q_value.min(),
-                min_qf_next_target.mean(),
-                min_qf_next_target.max(),
-                min_qf_next_target.min(),
+                (
+                    q_pred.mean(),
+                    q_pred.max(),
+                    q_pred.min(),
+                    next_q_value.mean(),
+                    next_q_value.max(),
+                    next_q_value.min(),
+                    min_qf_next_target.mean(),
+                    min_qf_next_target.max(),
+                    min_qf_next_target.min(),
+                ),
             )
 
         if self.split_critic_losses:
             (
                 (
                     critic_loss_value,
-                    qf_values,
-                    q_pred_mean,
-                    q_pred_max,
-                    q_pred_min,
-                    next_q_value_mean,
-                    next_q_value_max,
-                    next_q_value_min,
-                    min_qf_next_target_mean,
-                    min_qf_next_target_max,
-                    min_qf_next_target_min,
+                    (
+                        qf_values,
+                        q_pred_mean,
+                        q_pred_max,
+                        q_pred_min,
+                        next_q_value_mean,
+                        next_q_value_max,
+                        next_q_value_min,
+                        min_qf_next_target_mean,
+                        min_qf_next_target_max,
+                        min_qf_next_target_min,
+                    ),
                 ),
                 critic_grads,
             ) = jax.vmap(
@@ -334,16 +340,18 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             (
                 (
                     critic_loss_value,
-                    qf_values,
-                    q_pred_mean,
-                    q_pred_max,
-                    q_pred_min,
-                    next_q_value_mean,
-                    next_q_value_max,
-                    next_q_value_min,
-                    min_qf_next_target_mean,
-                    min_qf_next_target_max,
-                    min_qf_next_target_min,
+                    (
+                        qf_values,
+                        q_pred_mean,
+                        q_pred_max,
+                        q_pred_min,
+                        next_q_value_mean,
+                        next_q_value_max,
+                        next_q_value_min,
+                        min_qf_next_target_mean,
+                        min_qf_next_target_max,
+                        min_qf_next_target_min,
+                    ),
                 ),
                 critic_grads,
             ) = jax.value_and_grad(critic_loss, has_aux=True)(
