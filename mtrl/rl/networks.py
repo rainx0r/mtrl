@@ -32,10 +32,19 @@ class ContinuousActionPolicy(nn.Module):
         )(x)
 
         mean, log_std = jnp.split(x, 2, axis=-1)
+
+        self.sow("intermediates", "actor_avg_mean", mean.mean())
+        self.sow("intermediates", "actor_min_mean", mean.min())
+        self.sow("intermediates", "actor_max_mean", mean.max())
+
         log_std = jnp.clip(
             log_std, a_min=self.config.log_std_min, a_max=self.config.log_std_max
         )
         std = jnp.exp(log_std)
+
+        self.sow("intermediates", "actor_mean_std", std.mean())
+        self.sow("intermediates", "actor_min_std", std.min())
+        self.sow("intermediates", "actor_max_std", std.max())
 
         if self.config.squash_tanh:
             return TanhMultivariateNormalDiag(loc=mean, scale_diag=std)

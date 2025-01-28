@@ -5,6 +5,7 @@ from typing import Deque, Generic, Self, TypeVar, override
 
 import gymnasium as gym
 import numpy as np
+from mtrl.monitoring.utils import Histogram
 import orbax.checkpoint as ocp
 import wandb
 from flax import struct
@@ -414,6 +415,9 @@ class OnPolicyAlgorithm(
                 rollout_buffer.reset()
 
                 if track:
+                    for key, value in logs.items():
+                        if isinstance(value, Histogram):
+                            logs[key] = wandb.Histogram(value.histogram)
                     wandb.log(logs, step=total_steps)
 
                 if config.compute_network_metrics.value != 0:

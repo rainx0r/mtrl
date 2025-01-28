@@ -4,6 +4,7 @@ import numpy as np
 import numpy.typing as npt
 
 from jaxtyping import Float, Array
+from mtrl.monitoring.utils import Histogram
 
 
 Action = Float[np.ndarray, "... action_dim"]
@@ -12,7 +13,7 @@ LogProb = Float[np.ndarray, "... 1"]
 Observation = Float[np.ndarray, "... obs_dim"]
 LayerActivations = Float[Array, "batch_size layer_dim"]
 
-type LogDict = dict[str, float | Float[Array, ""]]
+type LogDict = dict[str, float | Float[Array, ""] | Histogram]
 type AuxPolicyOutputs = dict[str, npt.NDArray]
 type LayerActivationsDict = dict[str, Float[Array, "batch_size layer_dim"]]
 type Intermediates = dict[str, tuple[LayerActivations, ...] | "Intermediates"]
