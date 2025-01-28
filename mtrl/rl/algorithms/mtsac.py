@@ -123,12 +123,12 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def initialize(
         config: MTSACConfig, env_config: EnvConfig, seed: int = 1
     ) -> "MTSAC":
-        assert isinstance(
-            env_config.action_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
-        assert isinstance(
-            env_config.observation_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
+        assert isinstance(env_config.action_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
+        assert isinstance(env_config.observation_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
 
         master_key = jax.random.PRNGKey(seed)
         algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
@@ -263,15 +263,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         ) -> tuple[
             Float[Array, ""],  # loss
             tuple[
-                Float[Array, ""],  # q_pred_mean
-                Float[Array, ""],  # q_pred_max
-                Float[Array, ""],  # q_pred_min
-                Float[Array, ""],  # next_q_value_mean
-                Float[Array, ""],  # next_q_value_max
-                Float[Array, ""],  # next_q_value_min
-                Float[Array, ""],  # min_qf_next_target_mean
-                Float[Array, ""],  # min_qf_next_target_max
-                Float[Array, ""],  # min_qf_next_target_min
+                Float[Array, ""],  # q_pred
+                Float[Array, ""],  # next_q_value
+                Float[Array, ""],  # min_qf_next_target
             ],
         ]:
             # next_action_log_probs is (B,) shaped because of the sum(axis=1), while Q values are (B, 1)
@@ -291,15 +285,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             return (
                 loss,
                 (
-                    q_pred.mean(),
-                    q_pred.max(),
-                    q_pred.min(),
-                    next_q_value.mean(),
-                    next_q_value.max(),
-                    next_q_value.min(),
-                    min_qf_next_target.mean(),
-                    min_qf_next_target.max(),
-                    min_qf_next_target.min(),
+                    q_pred,
+                    next_q_value,
+                    min_qf_next_target,
                 ),
             )
 
@@ -309,15 +297,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                     critic_loss_value,
                     (
                         qf_values,
-                        q_pred_mean,
-                        q_pred_max,
-                        q_pred_min,
-                        next_q_value_mean,
-                        next_q_value_max,
-                        next_q_value_min,
-                        min_qf_next_target_mean,
-                        min_qf_next_target_max,
-                        min_qf_next_target_min,
+                        next_q_value,
+                        min_qf_next_target,
                     ),
                 ),
                 critic_grads,
@@ -342,15 +323,8 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                     critic_loss_value,
                     (
                         qf_values,
-                        q_pred_mean,
-                        q_pred_max,
-                        q_pred_min,
-                        next_q_value_mean,
-                        next_q_value_max,
-                        next_q_value_min,
-                        min_qf_next_target_mean,
-                        min_qf_next_target_max,
-                        min_qf_next_target_min,
+                        next_q_value,
+                        min_qf_next_target,
                     ),
                 ),
                 critic_grads,
@@ -382,15 +356,14 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             "losses/next_action_log_probs_mean": next_action_log_probs.mean(),
             "losses/next_action_log_probs_max": next_action_log_probs.max(),
             "losses/next_action_log_probs_min": next_action_log_probs.min(),
-            "losses/q_pred_mean": q_pred_mean,
-            "losses/q_pred_max": q_pred_max,
-            "losses/q_pred_min": q_pred_min,
-            "losses/next_q_value_mean": next_q_value_mean,
-            "losses/next_q_value_max": next_q_value_max,
-            "losses/next_q_value_min": next_q_value_min,
-            "losses/min_qf_next_target_mean": min_qf_next_target_mean,
-            "losses/min_qf_next_target_max": min_qf_next_target_max,
-            "losses/min_qf_next_target_min": min_qf_next_target_min,
+            "losses/q_pred_max": qf_values.max(),
+            "losses/q_pred_min": qf_values.min(),
+            "losses/next_q_value_mean": next_q_value.mean(),
+            "losses/next_q_value_max": next_q_value.max(),
+            "losses/next_q_value_min": next_q_value.min(),
+            "losses/min_qf_next_target_mean": min_qf_next_target.mean(),
+            "losses/min_qf_next_target_max": min_qf_next_target.max(),
+            "losses/min_qf_next_target_min": min_qf_next_target.min(),
             "metrics/critic_grad_magnitude": jnp.linalg.norm(flat_grads),
             "metrics/critic_params_norm": jnp.linalg.norm(flat_params_crit),
         }
