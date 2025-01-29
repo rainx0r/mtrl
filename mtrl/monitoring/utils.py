@@ -1,6 +1,8 @@
-import numpy as np
+import jax
+import flax.struct
+import numpy.typing as npt
+from jaxtyping import Float
 
 
-class Histogram:
-    def __init__(self, data):
-        self.histogram = np.histogram(data)
+class Histogram(flax.struct.PyTreeNode):
+    data: Float[npt.NDArray, "..."]

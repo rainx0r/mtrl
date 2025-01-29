@@ -124,12 +124,12 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def initialize(
         config: MTSACConfig, env_config: EnvConfig, seed: int = 1
     ) -> "MTSAC":
-        assert isinstance(
-            env_config.action_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
-        assert isinstance(
-            env_config.observation_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
+        assert isinstance(env_config.action_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
+        assert isinstance(env_config.observation_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
 
         master_key = jax.random.PRNGKey(seed)
         algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
@@ -244,7 +244,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             next_action_dist: distrax.Distribution
             next_action_dist, actor_state_next = self.actor.apply_fn(
                 self.actor.params, data.next_observations, mutable="intermediates"
-            ).sample_and_log_prob(seed=critic_loss_key)
+            )
             next_actions, next_action_log_probs = next_action_dist.sample_and_log_prob(
                 seed=critic_loss_key
             )
@@ -360,14 +360,14 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         )
         flat_params_crit, _ = flatten_util.ravel_pytree(critic.params)
 
-        breakpoint()
+        # breakpoint()
 
         return self.replace(critic=critic, key=key), {
             "losses/qf_values": qf_values.mean(),
             "losses/qf_loss": critic_loss_value.mean(),
             "losses/rewards_mean": data.rewards.mean(),
             "losses/rewards_max": data.rewards.max(),
-            "losses/rewards_min": data.rewards.max(),
+            "losses/rewards_min": data.rewards.min(),
             "losses/next_action_log_probs_mean": next_action_log_probs.mean(),
             "losses/next_action_log_probs_max": next_action_log_probs.max(),
             "losses/next_action_log_probs_min": next_action_log_probs.min(),
@@ -384,10 +384,15 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             "losses/min_qf_next_target_min": min_qf_next_target.min(),
             "metrics/critic_grad_magnitude": jnp.linalg.norm(flat_grads),
             "metrics/critic_params_norm": jnp.linalg.norm(flat_params_crit),
-            "metrics/actions": Histogram(data.actions.reshape(-1)),
-            "metrics/next_actions": Histogram(next_actions.reshape(-1)),
-            "metrics/next_action_mean": Histogram(actor_state_next["mean"].reshape(-1)),
-            "metrics/next_action_std": Histogram(actor_state_next["std"].reshape(-1)),
+            "metrics/actions": Histogram(data=data.actions.reshape(-1)),
+            "metrics/rewards": Histogram(data=data.rewards.reshape(-1)),
+            "metrics/next_actions": Histogram(data=next_actions.reshape(-1)),
+            "metrics/next_action_mean": Histogram(
+                data=actor_state_next["intermediates"]["mean"][0].reshape(-1)
+            ),
+            "metrics/next_action_std": Histogram(
+                data=actor_state_next["intermediates"]["std"][0].reshape(-1)
+            ),
         }
 
     def update_actor(
@@ -404,9 +409,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             _alpha_val: Float[Array, "batch 1"],
             _task_weights: Float[Array, "batch 1"] | None = None,
         ):
-            action_samples, log_probs = self.actor.apply_fn(
-                params, _data.observations
-            ).sample_and_log_prob(seed=actor_loss_key)
+            action_dist: distrax.Distribution
+            action_dist, actor_state = self.actor.apply_fn(
+                params, _data.observations, mutable="intermediates"
+            )
+            action_samples, log_probs = action_dist.sample_and_log_prob(
+                seed=actor_loss_key
+            )
 
             q_values = self.critic.apply_fn(
                 self.critic.params, _data.observations, action_samples
@@ -419,10 +428,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 ).mean()
             else:
                 loss = (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values).mean()
-            return loss, (action_samples, log_probs)
+            return loss, (action_samples, log_probs, actor_state, min_qf_values)
 
         if self.split_actor_losses:
-            (actor_loss_value, (action_samples, log_probs)), actor_grads = jax.vmap(
+            (
+                (actor_loss_value, (action_samples, log_probs, actor_state, min_qf_values)),
+                actor_grads,
+            ) = jax.vmap(
                 jax.value_and_grad(actor_loss, has_aux=True),
                 in_axes=(None, 0, 0, 0),
                 out_axes=0,
@@ -434,10 +446,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 -1,
             )
         else:
-            (actor_loss_value, (action_samples, log_probs)), actor_grads = (
-                jax.value_and_grad(
-                    actor_loss, has_aux=True
-                )(self.actor.params, data, alpha_val, task_weights)
+            (
+                (actor_loss_value, (action_samples, log_probs, actor_state, min_qf_values)),
+                actor_grads,
+            ) = jax.value_and_grad(actor_loss, has_aux=True)(
+                self.actor.params, data, alpha_val, task_weights
             )
             flat_grads, _ = flatten_util.ravel_pytree(actor_grads)
 
@@ -450,7 +463,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             "losses/actor_loss": actor_loss_value.mean(),
             "metrics/actor_grad_magnitude": jnp.linalg.norm(flat_grads),
             "metrics/actor_params_norm": jnp.linalg.norm(flat_params_act),
-            "metrics/action_samples": Histogram(action_samples.reshape(-1)),
+            "metrics/action_samples": Histogram(data=action_samples.reshape(-1)),
+            "metrics/action_samples_mean": Histogram(
+                data=actor_state["intermediates"]["mean"][0].reshape(-1)
+            ),
+            "metrics/action_samples_std": Histogram(
+                data=actor_state["intermediates"]["std"][0].reshape(-1)
+            ),
+            "metrics/actor_min_qf_values": min_qf_values.mean(),
+            "metrics/actor_min_qf_values_max": min_qf_values.max(),
+            "metrics/actor_min_qf_values_min": min_qf_values.min(),
         }
 
         return (self.replace(actor=actor, key=key), log_probs, logs)
@@ -548,7 +570,10 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
     @override
     def update(self, data: ReplayBufferSamples) -> tuple[Self, LogDict]:
-        return self._update_inner(data)
+        self, logs = self._update_inner(data)
+        # if logs["debug/next_action_log_probs"].mean() > 0:
+        #     breakpoint()
+        return self, logs
 
     def _split_critic_activations(
         self, critic_acts: LayerActivationsDict

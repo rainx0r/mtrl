@@ -4,8 +4,8 @@ from collections import deque
 from typing import Deque, Generic, Self, TypeVar, override
 
 import gymnasium as gym
+import jax
 import numpy as np
-from mtrl.monitoring.utils import Histogram
 import orbax.checkpoint as ocp
 import wandb
 from flax import struct
@@ -19,6 +19,7 @@ from mtrl.config.rl import (
 )
 from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
+from mtrl.monitoring.utils import Histogram
 from mtrl.rl.buffers import MultiTaskReplayBuffer, MultiTaskRolloutBuffer
 from mtrl.types import (
     Action,
@@ -197,6 +198,10 @@ class OffPolicyAlgorithm(
                     print("SPS:", sps)
 
                     if track:
+                        logs = jax.device_get(logs)
+                        for key, value in logs.items():
+                            if isinstance(value, Histogram):
+                                logs[key] = wandb.Histogram(value.data)
                         wandb.log({"charts/SPS": sps} | logs, step=total_steps)
 
                 # Evaluation
@@ -417,7 +422,7 @@ class OnPolicyAlgorithm(
                 if track:
                     for key, value in logs.items():
                         if isinstance(value, Histogram):
-                            logs[key] = wandb.Histogram(value.histogram)
+                            logs[key] = wandb.Histogram(np_histogram=value.histogram)
                     wandb.log(logs, step=total_steps)
 
                 if config.compute_network_metrics.value != 0:
