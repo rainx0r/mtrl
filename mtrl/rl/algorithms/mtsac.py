@@ -266,17 +266,20 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 _q_values, axis=0
             )
 
-            min_qf_next_target = jnp.clip(min_qf_next_target, -1500, 2500)
-
             min_qf_next_target = (
                 min_qf_next_target - alpha_val * next_action_log_probs.reshape(-1, 1)
             )
+
 
             next_q_value = jax.lax.stop_gradient(
                 _data.rewards + (1 - _data.dones) * self.gamma * min_qf_next_target
             )
 
             q_pred = self.critic.apply_fn(params, _data.observations, _data.actions)
+
+            # HACK: Clipping Q values to approximate theoretical maximum for Metaworld
+            min_qf_next_target = jnp.clip(min_qf_next_target, -5000, 5000)
+            q_pred = jnp.clip(q_pred, -5000, 5000)
 
             if _task_weights is not None:
                 loss = (_task_weights * (q_pred - next_q_value) ** 2).mean()
