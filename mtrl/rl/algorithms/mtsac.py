@@ -264,7 +264,14 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             # next_action_log_probs is (B,) shaped because of the sum(axis=1), while Q values are (B, 1)
             min_qf_next_target = jnp.min(
                 _q_values, axis=0
-            ) - _alpha_val * _next_action_log_probs.reshape(-1, 1)
+            )
+
+            min_q_next_target = jnp.clip(min_q_next_target, -1500, 2500)
+
+            min_qf_next_target = (
+                min_q_next_target - alpha_val * next_action_log_probs.reshape(-1, 1)
+            )
+
             next_q_value = jax.lax.stop_gradient(
                 _data.rewards + (1 - _data.dones) * self.gamma * min_qf_next_target
             )
