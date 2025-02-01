@@ -266,10 +266,10 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                 _q_values, axis=0
             )
 
-            min_q_next_target = jnp.clip(min_q_next_target, -1500, 2500)
+            min_qf_next_target = jnp.clip(min_qf_next_target, -1500, 2500)
 
             min_qf_next_target = (
-                min_q_next_target - alpha_val * next_action_log_probs.reshape(-1, 1)
+                min_qf_next_target - alpha_val * next_action_log_probs.reshape(-1, 1)
             )
 
             next_q_value = jax.lax.stop_gradient(
