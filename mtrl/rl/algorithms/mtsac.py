@@ -276,6 +276,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
             # HACK: Clipping Q values to approximate theoretical maximum for Metaworld
             min_qf_next_target = jnp.clip(min_qf_next_target, -5000, 5000)
+            q_pred = jnp.clip(q_pred, -5000, 5000)
 
             if _task_weights is not None:
                 loss = (_task_weights * (q_pred - next_q_value) ** 2).mean()

@@ -103,7 +103,7 @@ class MetaworldConfig(EnvConfig):
         assert isinstance(envs, gym.vector.AsyncVectorEnv) or isinstance(
             envs, gym.vector.SyncVectorEnv
         )
-        return evaluation(agent, envs, num_episodes=self.num_eval_episodes)
+        return evaluation(agent, envs, num_episodes=self.num_eval_episodes)[:3]
 
     @override
     def spawn(self, seed: int = 1) -> gym.vector.VectorEnv:
