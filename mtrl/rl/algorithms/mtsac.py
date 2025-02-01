@@ -123,12 +123,12 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def initialize(
         config: MTSACConfig, env_config: EnvConfig, seed: int = 1
     ) -> "MTSAC":
-        assert isinstance(env_config.action_space, gym.spaces.Box), (
-            "Non-box spaces currently not supported."
-        )
-        assert isinstance(env_config.observation_space, gym.spaces.Box), (
-            "Non-box spaces currently not supported."
-        )
+        assert isinstance(
+            env_config.action_space, gym.spaces.Box
+        ), "Non-box spaces currently not supported."
+        assert isinstance(
+            env_config.observation_space, gym.spaces.Box
+        ), "Non-box spaces currently not supported."
 
         master_key = jax.random.PRNGKey(seed)
         algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
@@ -262,14 +262,11 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             _task_weights: Float[Array, "#batch 1"] | None = None,
         ) -> tuple[Float[Array, ""], Float[Array, ""]]:
             # next_action_log_probs is (B,) shaped because of the sum(axis=1), while Q values are (B, 1)
-            min_qf_next_target = jnp.min(
-                _q_values, axis=0
-            )
+            min_qf_next_target = jnp.min(_q_values, axis=0)
 
             min_qf_next_target = (
                 min_qf_next_target - alpha_val * next_action_log_probs.reshape(-1, 1)
             )
-
 
             next_q_value = jax.lax.stop_gradient(
                 _data.rewards + (1 - _data.dones) * self.gamma * min_qf_next_target
@@ -279,7 +276,6 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
             # HACK: Clipping Q values to approximate theoretical maximum for Metaworld
             min_qf_next_target = jnp.clip(min_qf_next_target, -5000, 5000)
-            q_pred = jnp.clip(q_pred, -5000, 5000)
 
             if _task_weights is not None:
                 loss = (_task_weights * (q_pred - next_q_value) ** 2).mean()
