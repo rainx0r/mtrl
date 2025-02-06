@@ -60,8 +60,6 @@ class MLP(nn.Module):
         )(x)
         if self.activate_last:
             last_out = self.activation_fn(last_out)
-        if self.use_skip_connections:
-            return x + last_out
         return last_out
 
 
@@ -78,6 +76,7 @@ class VanillaNetwork(nn.Module):
         return MLP(
             head_dim=self.head_dim,
             width=self.config.width,
+            depth=self.config.depth,
             activation_fn=self.config.activation,
             kernel_init=self.config.kernel_init(),
             bias_init=self.config.bias_init(),
