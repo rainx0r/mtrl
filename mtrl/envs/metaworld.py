@@ -18,7 +18,8 @@ class MetaworldConfig(EnvConfig):
     reward_func_version: str = "v2"
     num_eval_episodes: int = 50
     num_goals: int = 50
-    reward_normalization_method : str | None = None
+    reward_normalization_method: str | None = None
+    task_name: str | None = None
 
     @cached_property
     @override
@@ -79,7 +80,7 @@ class MetaworldConfig(EnvConfig):
             dtype=np.float64,
         )
 
-        if self.use_one_hot:
+        if self.use_one_hot and self.env_id != "MT1":
             num_tasks = 1
             if self.env_id == "MT10":
                 num_tasks = 10
@@ -109,10 +110,36 @@ class MetaworldConfig(EnvConfig):
 
     @override
     def spawn(self, seed: int = 1) -> gym.vector.VectorEnv:
-        if self.env_id == 'MT25':
-            envs_list = ['reach-v3', 'push-v3', 'pick-place-v3', 'door-open-v3', 'drawer-open-v3', 'drawer-close-v3', 'button-press-topdown-v3', 'peg-insert-side-v3', 'window-open-v3', 'window-close-v3', 'coffee-pull-v3', 'pick-out-of-hole-v3', 'disassemble-v3', 'pick-place-wall-v3', 'basketball-v3', 'stick-pull-v3', 'button-press-wall-v3', 'faucet-open-v3', 'door-lock-v3', 'lever-pull-v3', 'sweep-into-v3', 'faucet-close-v3', 'coffee-button-v3', 'button-press-topdown-wall-v3', 'dial-turn-v3']
+        if self.env_id == "MT25":
+            envs_list = [
+                "reach-v3",
+                "push-v3",
+                "pick-place-v3",
+                "door-open-v3",
+                "drawer-open-v3",
+                "drawer-close-v3",
+                "button-press-topdown-v3",
+                "peg-insert-side-v3",
+                "window-open-v3",
+                "window-close-v3",
+                "coffee-pull-v3",
+                "pick-out-of-hole-v3",
+                "disassemble-v3",
+                "pick-place-wall-v3",
+                "basketball-v3",
+                "stick-pull-v3",
+                "button-press-wall-v3",
+                "faucet-open-v3",
+                "door-lock-v3",
+                "lever-pull-v3",
+                "sweep-into-v3",
+                "faucet-close-v3",
+                "coffee-button-v3",
+                "button-press-topdown-wall-v3",
+                "dial-turn-v3",
+            ]
             return gym.make_vec(
-                f"Meta-World/custom-mt-envs",
+                "Meta-World/custom-mt-envs",
                 seed=seed,
                 envs_list=envs_list,
                 use_one_hot=self.use_one_hot,
@@ -120,7 +147,23 @@ class MetaworldConfig(EnvConfig):
                 vector_strategy="async",
                 reward_function_version=self.reward_func_version,
                 num_goals=self.num_goals,
-                reward_normalization_method=self.reward_normalization_method
+                reward_normalization_method=self.reward_normalization_method,
+            )
+        elif self.env_id == "MT1":
+            assert self.task_name is not None, "task_name must be specified for MT1"
+            return gym.vector.SyncVectorEnv(
+                [
+                    lambda: gym.make(
+                        "Meta-World/MT1",
+                        env_name=self.task_name,
+                        use_one_hot=False,
+                        seed=seed,
+                        terminate_on_success=self.terminate_on_success,
+                        reward_function_version=self.reward_func_version,
+                        num_goals=self.num_goals,
+                        reward_normalization_method=self.reward_normalization_method,
+                    )
+                ]
             )
         else:
             return gym.make_vec(
@@ -131,5 +174,5 @@ class MetaworldConfig(EnvConfig):
                 vector_strategy="async",
                 reward_function_version=self.reward_func_version,
                 num_goals=self.num_goals,
-                reward_normalization_method=self.reward_normalization_method
+                reward_normalization_method=self.reward_normalization_method,
             )

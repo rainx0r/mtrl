@@ -19,7 +19,7 @@ from jaxtyping import Array, Float, PRNGKeyArray
 
 from mtrl.config.networks import ContinuousActionPolicyConfig, QValueFunctionConfig
 from mtrl.config.optim import OptimizerConfig
-from mtrl.config.rl import AlgorithmConfig
+from mtrl.config.rl import AlgorithmConfig, OffPolicyTrainingConfig
 from mtrl.config.utils import Metrics
 from mtrl.envs import EnvConfig
 from mtrl.monitoring.metrics import (
@@ -27,6 +27,7 @@ from mtrl.monitoring.metrics import (
     extract_activations,
     get_dormant_neuron_logs,
 )
+from mtrl.rl.buffers import ReplayBuffer
 from mtrl.rl.networks import ContinuousActionPolicy, Ensemble, QValueFunction
 from mtrl.types import (
     Action,
@@ -93,6 +94,16 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
     tau: float = struct.field(pytree_node=False)
     target_entropy: float = struct.field(pytree_node=False)
     num_critics: int = struct.field(pytree_node=False)
+
+    def spawn_replay_buffer(
+        self, env_config: EnvConfig, config: OffPolicyTrainingConfig, seed: int = 1
+    ) -> ReplayBuffer:
+        return ReplayBuffer(
+            capacity=config.buffer_size,
+            env_obs_space=env_config.observation_space,
+            env_action_space=env_config.action_space,
+            seed=seed,
+        )
 
     @override
     @staticmethod

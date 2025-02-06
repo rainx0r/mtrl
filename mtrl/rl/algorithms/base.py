@@ -119,8 +119,8 @@ class OffPolicyAlgorithm(
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
     ) -> Self:
-        global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
-        global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
+        global_episodic_return: Deque[float] = deque([], maxlen=20 * envs.num_envs)
+        global_episodic_length: Deque[int] = deque([], maxlen=20 * envs.num_envs)
 
         obs, _ = envs.reset()
 
@@ -141,9 +141,7 @@ class OffPolicyAlgorithm(
             total_steps = global_step * envs.num_envs
 
             if global_step < config.warmstart_steps:
-                actions = np.array(
-                    [envs.single_action_space.sample() for _ in range(envs.num_envs)]
-                )
+                actions = envs.action_space.sample()
             else:
                 self, actions = self.sample_action(obs)
 
@@ -295,8 +293,8 @@ class OnPolicyAlgorithm(
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
     ) -> Self:
-        global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
-        global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
+        global_episodic_return: Deque[float] = deque([], maxlen=20 * envs.num_envs)
+        global_episodic_length: Deque[int] = deque([], maxlen=20 * envs.num_envs)
 
         obs, _ = envs.reset()
 
@@ -402,9 +400,9 @@ class OnPolicyAlgorithm(
                         self, logs = self.update(minibatch_rollout)
 
                     if config.target_kl is not None:
-                        assert "losses/approx_kl" in logs, (
-                            "Algorithm did not provide approximate KL div, but approx_kl is not None."
-                        )
+                        assert (
+                            "losses/approx_kl" in logs
+                        ), "Algorithm did not provide approximate KL div, but approx_kl is not None."
                         if logs["losses/approx_kl"] > config.target_kl:
                             print(
                                 f"Stopped early at KL {logs['losses/approx_kl']}, ({epoch} epochs)"
