@@ -164,3 +164,9 @@ cython_debug/
 # MTRL
 **/experiment_results/
 launch_scipts/
+
+# Nix
+flake.nix
+flake.lock
+.direnv
+.envrc
