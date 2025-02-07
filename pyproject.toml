@@ -12,6 +12,7 @@ dependencies = [
     "jaxtyping>=0.2.34",
     "metaworld",
     "numpy>=2.1.2",
+    "opencv-python>=4.11.0.86",
     "orbax-checkpoint>=0.7.0",
     "tyro>=0.8.11",
     "wandb>=0.18.5",
