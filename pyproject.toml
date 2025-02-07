@@ -26,4 +26,4 @@ ignore-init-module-imports = true
 include = ["mtrl", "mtrl.*"]
 
 [tool.uv.sources]
-metaworld = { git = "https://github.com/rainx0r/Metaworld", rev = "speedup2" }
+metaworld = { git = "https://github.com/rainx0r/Metaworld.git", rev = "speedup2" }

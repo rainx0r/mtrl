@@ -213,16 +213,34 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
     def split_data_by_tasks(
         self,
-        data: PyTree[Float[Array, " batch data_dim"]],
-        task_ids: Float[npt.NDArray, " batch num_tasks"],
+        data: PyTree[Float[Array, "batch data_dim"]],
+        task_ids: Float[npt.NDArray, "batch num_tasks"],
     ) -> PyTree[Float[Array, "num_tasks per_task_batch data_dim"]]:
-        def group_by_task_leaf(leaf, one_hot):
-            tasks = jnp.argmax(one_hot, axis=1)
-            sorted_indices = jnp.argsort(tasks)
+        tasks = jnp.argmax(task_ids, axis=1)
+        sorted_indices = jnp.argsort(tasks)
+
+        def group_by_task_leaf(leaf: Float[Array, "batch data_dim"]) -> Float[Array, "task task_batch data_dim"]:
             leaf_sorted = leaf[sorted_indices]
             return leaf_sorted.reshape(self.num_tasks, -1, leaf.shape[1])
 
-        return jax.tree.map(lambda leaf: group_by_task_leaf(leaf, task_ids), data)
+        return jax.tree.map(group_by_task_leaf, data), sorted_indices
+
+    def unsplit_data_by_tasks(
+        self,
+        split_data: PyTree[Float[Array, "num_tasks per_task_batch data_dim"]],
+        sort_indices: jax.Array,
+    ) -> PyTree[Float[Array, "batch data_dim"]]:
+        def reconstruct_leaf(
+            leaf: Float[Array, "num_tasks per_task_batch data_dim"],
+        ) -> Float[Array, "batch data_dim"]:
+            batch_size = leaf.shape[0] * leaf.shape[1]
+            flat = leaf.reshape(batch_size, leaf.shape[-1])
+            # Create inverse permutation
+            inverse_indices = jnp.zeros_like(sort_indices)
+            inverse_indices = inverse_indices.at[sort_indices].set(jnp.arange(batch_size))
+            return flat[inverse_indices]
+
+        return jax.tree.map(reconstruct_leaf, split_data)
 
     def update_critic(
         self,
@@ -239,16 +257,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
                     seed=critic_loss_key
                 )
             )(data.observations)
-        else:
-            next_actions, next_action_log_probs = self.actor.apply_fn(
-                self.actor.params, data.next_observations
-            ).sample_and_log_prob(seed=critic_loss_key)
-        # Compute target Q values
-        if self.split_critic_losses:
             q_values = jax.vmap(self.critic.apply_fn, in_axes=(None, 0, 0))(
                 self.critic.target_params, data.next_observations, next_actions
             )
         else:
+            next_actions, next_action_log_probs = self.actor.apply_fn(
+                self.actor.params, data.next_observations
+            ).sample_and_log_prob(seed=critic_loss_key)
             q_values = self.critic.apply_fn(
                 self.critic.target_params, data.next_observations, next_actions
             )
@@ -258,15 +273,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             _data: ReplayBufferSamples,
             _q_values: Float[Array, "#batch 1"],
             _alpha_val: Float[Array, "#batch 1"],
-            _next_action_log_probs: Float[Array, " batch"],
+            _next_action_log_probs: Float[Array, " #batch"],
             _task_weights: Float[Array, "#batch 1"] | None = None,
         ) -> tuple[Float[Array, ""], Float[Array, ""]]:
             # next_action_log_probs is (B,) shaped because of the sum(axis=1), while Q values are (B, 1)
-            min_qf_next_target = jnp.min(_q_values, axis=0)
-
-            min_qf_next_target = (
-                min_qf_next_target - _alpha_val * _next_action_log_probs.reshape(-1, 1)
-            )
+            min_qf_next_target = jnp.min(
+                _q_values, axis=0
+            ) - _alpha_val * _next_action_log_probs.reshape(-1, 1)
 
             next_q_value = jax.lax.stop_gradient(
                 _data.rewards + (1 - _data.dones) * self.gamma * min_qf_next_target
@@ -275,7 +288,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             q_pred = self.critic.apply_fn(params, _data.observations, _data.actions)
 
             # HACK: Clipping Q values to approximate theoretical maximum for Metaworld
-            min_qf_next_target = jnp.clip(min_qf_next_target, -5000, 5000)
+            next_q_value = jnp.clip(next_q_value, -5000, 5000)
             q_pred = jnp.clip(q_pred, -5000, 5000)
 
             if _task_weights is not None:
@@ -313,8 +326,13 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             )
             flat_grads, _ = flatten_util.ravel_pytree(critic_grads)
 
+        key, optimizer_key = jax.random.split(key)
         critic = self.critic.apply_gradients(
-            grads=critic_grads, optimizer_extra_args={"task_losses": critic_loss_value}
+            grads=critic_grads,
+            optimizer_extra_args={
+                "task_losses": critic_loss_value,
+                "key": optimizer_key,
+            },
         )
         critic = critic.replace(
             target_params=optax.incremental_update(
@@ -349,18 +367,16 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             action_samples, log_probs = self.actor.apply_fn(
                 params, _data.observations
             ).sample_and_log_prob(seed=actor_loss_key)
+            log_probs = log_probs.reshape(-1, 1)
 
             q_values = self.critic.apply_fn(
                 self.critic.params, _data.observations, action_samples
             )
             min_qf_values = jnp.min(q_values, axis=0)
             if _task_weights is not None:
-                loss = (
-                    task_weights
-                    * (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values)
-                ).mean()
+                loss = (task_weights * (_alpha_val * log_probs - min_qf_values)).mean()
             else:
-                loss = (_alpha_val * log_probs.reshape(-1, 1) - min_qf_values).mean()
+                loss = (_alpha_val * log_probs - min_qf_values).mean()
             return loss, log_probs
 
         if self.split_actor_losses:
@@ -372,17 +388,19 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             flat_grads, _ = flatten_util.ravel_pytree(
                 jax.tree.map(lambda x: x.mean(axis=0), actor_grads)
             )
-            log_probs = log_probs.reshape(
-                -1,
-            )
         else:
             (actor_loss_value, log_probs), actor_grads = jax.value_and_grad(
                 actor_loss, has_aux=True
             )(self.actor.params, data, alpha_val, task_weights)
             flat_grads, _ = flatten_util.ravel_pytree(actor_grads)
 
+        key, optimizer_key = jax.random.split(key)
         actor = self.actor.apply_gradients(
-            grads=actor_grads, optimizer_extra_args={"task_losses": actor_loss_value}
+            grads=actor_grads,
+            optimizer_extra_args={
+                "task_losses": actor_loss_value,
+                "key": optimizer_key,
+            },
         )
 
         flat_params_act, _ = flatten_util.ravel_pytree(actor.params)
@@ -402,9 +420,7 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         def alpha_loss(params: FrozenDict) -> Float[Array, ""]:
             log_alpha: jax.Array
             log_alpha = task_ids @ params["params"]["log_alpha"].reshape(-1, 1)  # pyright: ignore [reportAttributeAccessIssue]
-            return (
-                -log_alpha * (log_probs.reshape(-1, 1) + self.target_entropy)
-            ).mean()
+            return (-log_alpha * (log_probs + self.target_entropy)).mean()
 
         alpha_loss_value, alpha_grads = jax.value_and_grad(alpha_loss)(
             self.alpha.params
@@ -429,14 +445,15 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         actor_data = critic_data = data
         actor_alpha_vals = critic_alpha_vals = alpha_vals
         actor_task_weights = critic_task_weights = task_weights
+        alpha_val_indices = None
 
         if self.split_critic_losses or self.split_actor_losses:
-            split_data = self.split_data_by_tasks(data, task_ids)
-            split_alpha_vals = self.split_data_by_tasks(alpha_vals, task_ids)
-            split_task_weights = (
+            split_data, _ = self.split_data_by_tasks(data, task_ids)
+            split_alpha_vals, alpha_val_indices = self.split_data_by_tasks(alpha_vals, task_ids)
+            split_task_weights, _ = (
                 self.split_data_by_tasks(task_weights, task_ids)
                 if task_weights is not None
-                else None
+                else (None, None)
             )
 
             if self.split_critic_losses:
@@ -455,6 +472,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         self, log_probs, actor_logs = self.update_actor(
             actor_data, actor_alpha_vals, actor_task_weights
         )
+        if self.split_actor_losses:
+            assert alpha_val_indices is not None
+            log_probs = self.unsplit_data_by_tasks(log_probs, alpha_val_indices)
         self, alpha_logs = self.update_alpha(log_probs, task_ids)
 
         # HACK: PCGrad logs

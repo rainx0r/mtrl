@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import jax
 import optax
 
+from mtrl.optim.dummy import dummy_multitask_optimizer
 from mtrl.optim.gradnorm import gradnorm
 from mtrl.optim.pcgrad import pcgrad
 
@@ -32,6 +33,19 @@ class OptimizerConfig:
                 optim,
             )
         return optim
+
+
+@dataclass(frozen=True, kw_only=True)
+class DummyMultiTaskConfig(OptimizerConfig):
+    @property
+    def requires_split_task_losses(self) -> bool:
+        return True
+
+    def spawn(self) -> optax.GradientTransformation:
+        return optax.chain(
+            dummy_multitask_optimizer(),
+            super().spawn(),
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
