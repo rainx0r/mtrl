@@ -28,7 +28,7 @@ def main() -> None:
     WIDTH = 256
 
     experiment = Experiment(
-        exp_name="mt10_mtmhsac_v2_width_1024",
+        exp_name=f"mt10_mtmhsac_v2_width_{WIDTH}",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
