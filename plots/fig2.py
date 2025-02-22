@@ -21,14 +21,14 @@ def main():
             {
                 "Benchmark": "MT10",
                 "Width": "256",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_256",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_256",
@@ -38,14 +38,14 @@ def main():
             {
                 "Benchmark": "MT10",
                 "Width": "512",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_512",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_512",
@@ -55,14 +55,14 @@ def main():
             {
                 "Benchmark": "MT10",
                 "Width": "1024",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_1024",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_1024",
@@ -72,14 +72,14 @@ def main():
             {
                 "Benchmark": "MT10",
                 "Width": "2048",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_2048",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_2048",
@@ -89,14 +89,14 @@ def main():
             {
                 "Benchmark": "MT10",
                 "Width": "4096",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_4096",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt10-results",
                     "mt10_mtmhsac_v2_width_4096",
@@ -106,14 +106,14 @@ def main():
             {
                 "Benchmark": "MT25",
                 "Width": "256",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_256_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_256_width",
@@ -123,14 +123,14 @@ def main():
             {
                 "Benchmark": "MT25",
                 "Width": "512",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_512_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_512_width",
@@ -140,14 +140,14 @@ def main():
             {
                 "Benchmark": "MT25",
                 "Width": "1024",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_1024_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_1024_width",
@@ -157,14 +157,14 @@ def main():
             {
                 "Benchmark": "MT25",
                 "Width": "2048",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_2048_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt25-results",
                     "mt25_mtmhsac_v2_2048_width",
@@ -174,24 +174,24 @@ def main():
             # {
             #     "Benchmark": "MT25",
             #     "Width": "4096",
-            # "Number of Parameters": get_metric(
+            # "Number of parameters": get_metric(
             #     wandb_entity, "mtrl-mt50-results", "mt25_mtmhsac_v2_4096_width", "actor_num_params", source="config"
             # ),
-            #     "Success Rate": get_metric(  # FIXME: This should be in the mt25 project, also not dnoe yet
+            #     "Success rate": get_metric(  # FIXME: This should be in the mt25 project, also not dnoe yet
             #         wandb_entity, "mtrl-mt50-results", "mt25_mtmhsac_v2_4096", metric
             #     ),
             # },
             {
                 "Benchmark": "MT50",
                 "Width": "256",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_256_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_256_width",
@@ -201,14 +201,14 @@ def main():
             {
                 "Benchmark": "MT50",
                 "Width": "512",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_512_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_512_width",
@@ -218,14 +218,14 @@ def main():
             {
                 "Benchmark": "MT50",
                 "Width": "1024",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_1024_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_1024_width",
@@ -235,14 +235,14 @@ def main():
             {
                 "Benchmark": "MT50",
                 "Width": "2048",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_2048_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_2048_width",
@@ -252,14 +252,14 @@ def main():
             {
                 "Benchmark": "MT50",
                 "Width": "4096",
-                "Number of Parameters": get_metric(
+                "Number of parameters": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_4096_width",
                     "actor_num_params",
                     source="config",
                 )[0],
-                "Success Rate": get_metric(
+                "Success rate": get_metric(
                     wandb_entity,
                     "mtrl-mt50-results",
                     "mt50_mtmhsac_v2_4096_width",
@@ -267,18 +267,18 @@ def main():
                 ),
             },
         ]
-    ).explode("Success Rate")
+    ).explode("Success rate")
 
     x_axis = alt.X(
-        "Number of Parameters:Q",
+        "Number of parameters:Q",
         scale=alt.Scale(
             type="log",
             domain=[  # pyright: ignore [reportArgumentType]
-                data["Number of Parameters"].min(),
-                data["Number of Parameters"].max(),
+                data["Number of parameters"].min(),
+                data["Number of parameters"].max(),
             ],
         ),
-        title="Number of Parameters",
+        title="Number of parameters",
         axis=alt.Axis(
             format="~s",
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
@@ -287,8 +287,8 @@ def main():
         ),
     )
     y_axis = alt.Y(
-        "mean(Success Rate)",
-        title="Success Rate",
+        "mean(Success rate)",
+        title="Success rate",
         scale=alt.Scale(domain=[0.5, 1]),
     )
     color_axis = alt.Color("Benchmark:N", title="Benchmark").scale(
@@ -319,7 +319,7 @@ def main():
     chart = band + line
     chart = (
         chart.properties(
-            width=600, height=400, title="Scaling Performance Across MT10/MT25/MT50"
+            width=600, height=400, title="Scaling performance across MT10/MT25/MT50"
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,
