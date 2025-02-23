@@ -56,7 +56,7 @@ def main():
     x_axis = alt.X(
         "Timestep:Q",
         scale=alt.Scale(domain=[300_000, 2e7]),
-        title="Timestep",
+        title="Number of environment steps",
         axis=alt.Axis(
             format="~s",
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",

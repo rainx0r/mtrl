@@ -86,8 +86,6 @@ def main():
         pl.col("Timestep") == pl.col("Timestep").max().over("Number of tasks", "Number of parameters")
     ).drop("Timestep")
 
-    print(data)
-
     x_axis = alt.X(
         "Number of parameters:Q",
         scale=alt.Scale(

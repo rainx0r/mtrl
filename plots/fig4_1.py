@@ -77,7 +77,7 @@ def main():
                         "Width": datum["Width"],
                         "Number of parameters": datum["Number of parameters"],
                         "Dormant neuron ratio": value,
-                        "Timestep": step,
+                        "Number of environment steps": step,
                         "Run": i,
                     }
                 )
@@ -87,7 +87,7 @@ def main():
     x_axis = alt.X(
         "Timestep:Q",
         scale=alt.Scale(domain=[0, max_timestep]),
-        title="Timestep",
+        title="Number of environment steps",
         axis=alt.Axis(
             format="~s",
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
