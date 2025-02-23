@@ -46,7 +46,10 @@ def get_metric_history(
     samples: int = 500,
 ) -> list[dict[int, float]]:
     CACHE_DIR.mkdir(exist_ok=True)
-    cache_file = CACHE_DIR / f"{entity}_{project}_{run_name}_{metric.replace('/', '_')}_history.json"
+    cache_file = (
+        CACHE_DIR
+        / f"{entity}_{project}_{run_name}_{metric.replace('/', '_')}_history.json"
+    )
     if cache_file.exists():
         with open(cache_file, "r") as f:
             data = json.load(f)

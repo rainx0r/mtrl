@@ -1,27 +1,19 @@
-"""Figure: dormant neuron ratio throughout training for one scale, for MT10/MT25/MT50
+"""Figure: dormant neuron ratio at the end of training for different scales, for MT10/MT25/MT50
 
-x-axis: timestep
-y-axis: dormant neuron ratio
-colour: benchmark
+x-axis: number of parameters
+y-axis: dormant neuron ratio at the end of training
+color: benchmark
 """
 
 import pathlib
-from dataclasses import dataclass
 
 import altair as alt
 import design_system
 import polars as pl
-import tyro
 from get_data import get_metric, get_metric_history
 
 
-@dataclass
-class Args:
-    width: int = 2048
-
 def main():
-    args = tyro.cli(Args)
-
     entity = "reggies-phd-research"
     metric = "metrics/dormant_neurons_critic_0_total_ratio"
 
@@ -51,19 +43,24 @@ def main():
     raw_data = [
         {
             "Benchmark": benchmark,
-            "Width": args.width,
+            "Number of tasks": num_tasks,
+            "Width": width,
             "Number of parameters": get_metric(
                 entity,
-                project(benchmark, args.width),
-                run_name(benchmark, args.width),
+                project(benchmark, width),
+                run_name(benchmark, width),
                 "actor_num_params",
                 source="config",
             )[0],
             "Dormant neuron ratio": get_metric_history(
-                entity, project(benchmark, args.width), run_name(benchmark, args.width), metric
+                entity,
+                project(benchmark, width),
+                run_name(benchmark, width),
+                metric,
             ),
         }
-        for benchmark in ["MT10", "MT50", "MT25"]
+        for (benchmark, num_tasks) in [("MT10", 10), ("MT50", 50), ("MT25", 25)]
+        for width in [256, 512, 1024, 2048]
     ]
 
     # Expand history data into individual rows
@@ -75,6 +72,7 @@ def main():
                     {
                         "Benchmark": datum["Benchmark"],
                         "Width": datum["Width"],
+                        "Number of tasks": datum["Number of tasks"],
                         "Number of parameters": datum["Number of parameters"],
                         "Dormant neuron ratio": value,
                         "Timestep": step,
@@ -83,11 +81,23 @@ def main():
                 )
     data = pl.DataFrame(data)
 
-    max_timestep = 1e8
+    data = data.with_columns(pl.col("Timestep").cast(pl.Int64))
+    data = data.filter(
+        pl.col("Timestep") == pl.col("Timestep").max().over("Number of tasks", "Number of parameters")
+    ).drop("Timestep")
+
+    print(data)
+
     x_axis = alt.X(
-        "Timestep:Q",
-        scale=alt.Scale(domain=[0, max_timestep]),
-        title="Timestep",
+        "Number of parameters:Q",
+        scale=alt.Scale(
+            type="log",
+            domain=[  # pyright: ignore [reportArgumentType]
+                data["Number of parameters"].min(),
+                data["Number of parameters"].max(),
+            ],
+        ),
+        title="Number of parameters",
         axis=alt.Axis(
             format="~s",
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
@@ -100,8 +110,8 @@ def main():
         title="Dormant neuron ratio (%)",
         scale=alt.Scale(domain=[0, 50]),
     )
-    color_axis = alt.Color("Benchmark:N", title="Benchmark").scale(
-        domain=["MT10", "MT25", "MT50"],
+    color_axis = alt.Color("Number of tasks:O", title="Number of tasks").scale(
+        domain=[10, 25, 50],
         range=[
             design_system.COLORS["primary"][500],
             design_system.COLORS["primary"][800],
@@ -115,12 +125,12 @@ def main():
         color=color_axis,
     )
 
-    line = base.mark_line(clip=True, interpolate="basis-open").encode(
+    line = base.mark_line(clip=True, point=True).encode(
         x=x_axis,
         y=y_axis,
     )
 
-    band = base.mark_errorband(clip=True, extent="ci", interpolate="basis-open").encode(
+    band = base.mark_errorband(extent="ci").encode(
         x=x_axis,
         y=y_axis,
     )
@@ -129,7 +139,7 @@ def main():
         chart.properties(
             width=600,
             height=400,
-            title="Dormant neuron ratio throughout training across different benchmarks",
+            title="Dormant neuron ratio across different number of tasks",
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,
@@ -151,7 +161,7 @@ def main():
 
     figures_dir = pathlib.Path(__file__).parent.parent / "figures"
     figures_dir.mkdir(exist_ok=True)
-    chart.save(figures_dir / f"fig4_1_{args.width}.svg")
+    chart.save(figures_dir / "fig4_3.svg")
 
 
 if __name__ == "__main__":

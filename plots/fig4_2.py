@@ -1,8 +1,7 @@
-"""Figure: dormant neuron ratio throughout training for one scale, for MT10/MT25/MT50
+"""Figure: dormant neuron ratio at the end of training for one scale, for MT10/MT25/MT50
 
-x-axis: timestep
+x-axis: num tasks
 y-axis: dormant neuron ratio
-colour: benchmark
 """
 
 import pathlib
@@ -18,6 +17,7 @@ from get_data import get_metric, get_metric_history
 @dataclass
 class Args:
     width: int = 2048
+
 
 def main():
     args = tyro.cli(Args)
@@ -51,6 +51,7 @@ def main():
     raw_data = [
         {
             "Benchmark": benchmark,
+            "Number of tasks": num_tasks,
             "Width": args.width,
             "Number of parameters": get_metric(
                 entity,
@@ -60,10 +61,13 @@ def main():
                 source="config",
             )[0],
             "Dormant neuron ratio": get_metric_history(
-                entity, project(benchmark, args.width), run_name(benchmark, args.width), metric
+                entity,
+                project(benchmark, args.width),
+                run_name(benchmark, args.width),
+                metric,
             ),
         }
-        for benchmark in ["MT10", "MT50", "MT25"]
+        for (benchmark, num_tasks) in [("MT10", 10), ("MT50", 50), ("MT25", 25)]
     ]
 
     # Expand history data into individual rows
@@ -75,6 +79,7 @@ def main():
                     {
                         "Benchmark": datum["Benchmark"],
                         "Width": datum["Width"],
+                        "Number of tasks": datum["Number of tasks"],
                         "Number of parameters": datum["Number of parameters"],
                         "Dormant neuron ratio": value,
                         "Timestep": step,
@@ -83,14 +88,13 @@ def main():
                 )
     data = pl.DataFrame(data)
 
-    max_timestep = 1e8
+    data = data.with_columns(pl.col("Timestep").cast(pl.Int64))
+    data = data.filter(pl.col("Timestep") == pl.col("Timestep").max().over("Number of tasks"))
+
     x_axis = alt.X(
-        "Timestep:Q",
-        scale=alt.Scale(domain=[0, max_timestep]),
-        title="Timestep",
+        "Number of tasks:O",
+        title="Number of tasks",
         axis=alt.Axis(
-            format="~s",
-            labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
         ),
@@ -98,38 +102,31 @@ def main():
     y_axis = alt.Y(
         "mean(Dormant neuron ratio):Q",
         title="Dormant neuron ratio (%)",
-        scale=alt.Scale(domain=[0, 50]),
-    )
-    color_axis = alt.Color("Benchmark:N", title="Benchmark").scale(
-        domain=["MT10", "MT25", "MT50"],
-        range=[
-            design_system.COLORS["primary"][500],
-            design_system.COLORS["primary"][800],
-            design_system.COLORS["grey"][800],
-        ],
+        scale=alt.Scale(domain=[0, 35]),
     )
 
     base = alt.Chart(data).encode(
         x=x_axis,
         y=y_axis,
-        color=color_axis,
     )
 
-    line = base.mark_line(clip=True, interpolate="basis-open").encode(
+    line = base.mark_line().encode(
         x=x_axis,
         y=y_axis,
+        color=alt.value(design_system.COLORS["primary"][500]),
     )
 
-    band = base.mark_errorband(clip=True, extent="ci", interpolate="basis-open").encode(
+    band = base.mark_errorband(extent="ci").encode(
         x=x_axis,
         y=y_axis,
+        color=alt.value(design_system.COLORS["primary"][500]),
     )
     chart = band + line
     chart = (
         chart.properties(
             width=600,
             height=400,
-            title="Dormant neuron ratio throughout training across different benchmarks",
+            title="Dormant neuron ratio across different number of tasks",
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,
@@ -151,7 +148,7 @@ def main():
 
     figures_dir = pathlib.Path(__file__).parent.parent / "figures"
     figures_dir.mkdir(exist_ok=True)
-    chart.save(figures_dir / f"fig4_1_{args.width}.svg")
+    chart.save(figures_dir / f"fig4_2_{args.width}.svg")
 
 
 if __name__ == "__main__":
