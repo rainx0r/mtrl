@@ -116,12 +116,12 @@ def main():
         color=color_axis,
     )
 
-    line = base.mark_line(clip=True, interpolate="basis").encode(
+    line = base.mark_line(clip=True, interpolate="basis-open").encode(
         x=x_axis,
         y=y_axis,
     )
 
-    band = base.mark_errorband(clip=True, extent="ci", interpolate="basis").encode(
+    band = base.mark_errorband(clip=True, extent="ci", interpolate="basis-open").encode(
         x=x_axis,
         y=y_axis,
     )
