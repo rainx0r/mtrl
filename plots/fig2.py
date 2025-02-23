@@ -16,256 +16,52 @@ import pathlib
 def main():
     wandb_entity = "reggies-phd-research"
     metric = "charts/mean_success_rate"
+
+    def project(benchmark: str, width: int):
+        if benchmark == "MT10":
+            return "mtrl-mt10-results"
+        elif benchmark == "MT50":
+            return "mtrl-mt50-results"
+        elif benchmark == "MT25":
+            if width != 4096:
+                return "mtrl-mt25-results"
+            else:
+                raise NotImplementedError
+        else:
+            raise ValueError
+
+    def run_name(benchmark: str, width: int):
+        if benchmark == "MT10":
+            return f"mt10_mtmhsac_v2_width_{width}"
+        elif benchmark == "MT50":
+            return f"mt50_mtmhsac_v2_{width}_width"
+        elif benchmark == "MT25":
+            return f"mt25_mtmhsac_v2_{width}_width"
+        else:
+            raise ValueError
+
     data = ps.DataFrame(
         [
             {
-                "Benchmark": "MT10",
-                "Width": "256",
+                "Benchmark": benchmark,
+                "Width": width,
                 "Number of parameters": get_metric(
                     wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_256",
+                    project(benchmark, width),
+                    run_name(benchmark, width),
                     "actor_num_params",
                     source="config",
                 )[0],
                 "Success rate": get_metric(
                     wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_256",
+                    project(benchmark, width),
+                    run_name(benchmark, width),
                     metric,
                 ),
-            },
-            {
-                "Benchmark": "MT10",
-                "Width": "512",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_512",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_512",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT10",
-                "Width": "1024",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_1024",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_1024",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT10",
-                "Width": "2048",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_2048",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_2048",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT10",
-                "Width": "4096",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_4096",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt10-results",
-                    "mt10_mtmhsac_v2_width_4096",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT25",
-                "Width": "256",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_256_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_256_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT25",
-                "Width": "512",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_512_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_512_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT25",
-                "Width": "1024",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_1024_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_1024_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT25",
-                "Width": "2048",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_2048_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt25-results",
-                    "mt25_mtmhsac_v2_2048_width",
-                    metric,
-                ),
-            },
-            # {
-            #     "Benchmark": "MT25",
-            #     "Width": "4096",
-            # "Number of parameters": get_metric(
-            #     wandb_entity, "mtrl-mt50-results", "mt25_mtmhsac_v2_4096_width", "actor_num_params", source="config"
-            # ),
-            #     "Success rate": get_metric(  # FIXME: This should be in the mt25 project, also not dnoe yet
-            #         wandb_entity, "mtrl-mt50-results", "mt25_mtmhsac_v2_4096", metric
-            #     ),
-            # },
-            {
-                "Benchmark": "MT50",
-                "Width": "256",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_256_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_256_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT50",
-                "Width": "512",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_512_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_512_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT50",
-                "Width": "1024",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_1024_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_1024_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT50",
-                "Width": "2048",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_2048_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_2048_width",
-                    metric,
-                ),
-            },
-            {
-                "Benchmark": "MT50",
-                "Width": "4096",
-                "Number of parameters": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_4096_width",
-                    "actor_num_params",
-                    source="config",
-                )[0],
-                "Success rate": get_metric(
-                    wandb_entity,
-                    "mtrl-mt50-results",
-                    "mt50_mtmhsac_v2_4096_width",
-                    metric,
-                ),
-            },
+            }
+            for width in [256, 512, 1024, 2048, 4096]
+            for benchmark in ["MT10", "MT25", "MT50"]
+            if not (benchmark == "MT25" and width == 4096)  # FIXME:
         ]
     ).explode("Success rate")
 
