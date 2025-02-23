@@ -130,7 +130,7 @@ def main():
         chart.properties(
             width=600,
             height=400,
-            title=f"Success rate throughout training across different scales for {args.benchmark}",
+            # title=f"Success rate throughout training across different scales for {args.benchmark}",
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,

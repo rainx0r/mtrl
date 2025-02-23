@@ -131,7 +131,7 @@ def main():
         chart.properties(
             width=600,
             height=400,
-            title=f"Dormant neuron ratio throughout training across different scales for {args.benchmark}",
+            # title=f"Dormant neuron ratio throughout training across different scales for {args.benchmark}",
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,

@@ -139,7 +139,7 @@ def main():
         chart.properties(
             width=600,
             height=400,
-            title="Dormant neuron ratio across different number of tasks",
+            # title="Dormant neuron ratio across different number of tasks",
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,

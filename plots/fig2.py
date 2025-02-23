@@ -115,7 +115,8 @@ def main():
     chart = band + line
     chart = (
         chart.properties(
-            width=600, height=400, title="Scaling performance across MT10/MT25/MT50"
+            width=600, height=400,
+            # title="Scaling performance across MT10/MT25/MT50"
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,
