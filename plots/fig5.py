@@ -65,6 +65,19 @@ def main():
                 )
     data = pl.DataFrame(data)
 
+    iq_data = data.group_by("Variant", "Timestep").agg(
+        pl.col("Success rate").quantile(0.25).alias("q1"),
+        pl.col("Success rate").quantile(0.75).alias("q3"),
+    )
+    data = data.join(
+        iq_data,
+        on=["Variant", "Timestep"],
+        how="left",
+    ).filter(
+        (pl.col("Success rate") >= pl.col("q1"))
+        & (pl.col("Success rate") <= pl.col("q3"))
+    )
+
     max_timestep = 2e7
     x_axis = alt.X(
         "Timestep:Q",
@@ -82,7 +95,11 @@ def main():
         title="Success rate",
         scale=alt.Scale(domain=[0.2, 1]),
     )
-    color_axis = alt.Color("Variant:N", title="Network widths").scale(
+    color_axis = alt.Color(
+        "Variant:N",
+        title="Network widths",
+        legend=alt.Legend(orient="bottom-right", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=[item["Variant"] for item in raw_data],
         range=[
             design_system.COLORS["primary"][500],

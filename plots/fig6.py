@@ -53,6 +53,19 @@ def main():
                 )
     data = pl.DataFrame(data)
 
+    iq_data = data.group_by("Algorithm", "Timestep").agg(
+        pl.col("Success rate").quantile(0.25).alias("q1"),
+        pl.col("Success rate").quantile(0.75).alias("q3"),
+    )
+    data = data.join(
+        iq_data,
+        on=["Algorithm", "Timestep"],
+        how="left",
+    ).filter(
+        (pl.col("Success rate") >= pl.col("q1"))
+        & (pl.col("Success rate") <= pl.col("q3"))
+    )
+
     x_axis = alt.X(
         "Timestep:Q",
         scale=alt.Scale(domain=[300_000, 2e7]),
@@ -69,7 +82,11 @@ def main():
         title="Success rate",
         scale=alt.Scale(domain=[0.2, 1]),
     )
-    color_axis = alt.Color("Algorithm:N", title="Algorithm").scale(
+    color_axis = alt.Color(
+        "Algorithm:N",
+        title="Algorithm",
+        legend=alt.Legend(orient="bottom-right", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=[item["Algorithm"] for item in raw_data],
         range=[
             design_system.COLORS["primary"][500],
@@ -117,6 +134,7 @@ def main():
     figures_dir.mkdir(exist_ok=True)
     chart.save(figures_dir / "fig6.svg")
     pass
+
 
 if __name__ == "__main__":
     main()

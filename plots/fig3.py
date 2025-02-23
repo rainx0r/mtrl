@@ -79,13 +79,28 @@ def main():
                 )
     data = pl.DataFrame(data)
 
+    iq_data = data.group_by(
+        "Benchmark", "Width", "Number of parameters", "Timestep"
+    ).agg(
+        pl.col("Success rate").quantile(0.25).alias("q1"),
+        pl.col("Success rate").quantile(0.75).alias("q3"),
+    )
+    data = data.join(
+        iq_data,
+        on=["Benchmark", "Width", "Number of parameters", "Timestep"],
+        how="left",
+    ).filter(
+        (pl.col("Success rate") >= pl.col("q1"))
+        & (pl.col("Success rate") <= pl.col("q3"))
+    )
+
     if args.benchmark == "MT10":
         max_timestep = 2e7
     else:
         max_timestep = 1e8
     x_axis = alt.X(
         "Timestep:Q",
-        scale=alt.Scale(domain=[0, max_timestep]),
+        scale=alt.Scale(domain=[200_000, max_timestep]),
         title="Number of environment steps",
         axis=alt.Axis(
             format="~s",
@@ -97,9 +112,13 @@ def main():
     y_axis = alt.Y(
         "mean(Success rate):Q",
         title="Success rate",
-        scale=alt.Scale(domain=[0.1, 1]),
+        scale=alt.Scale(domain=[0.15, 1]),
     )
-    color_axis = alt.Color("Width:N", title="Width").scale(
+    color_axis = alt.Color(
+        "Width:N",
+        title="Width",
+        legend=alt.Legend(orient="bottom-right", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=[256, 512, 1024, 2048, 4096],
         range=[
             design_system.COLORS["primary"][400],

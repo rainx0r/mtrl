@@ -103,7 +103,8 @@ def main():
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
             values=[
-                200_000,
+                data["Number of parameters"].min(), # pyright: ignore [reportArgumentType]
+                # 200_000,
                 500_000,
                 1_000_000,
                 2_000_000,

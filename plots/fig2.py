@@ -7,7 +7,7 @@ colour: benchmark
 
 import altair as alt
 import design_system
-import polars as ps
+import polars as pl
 from get_data import get_metric
 
 import pathlib
@@ -40,15 +40,15 @@ def main():
         else:
             raise ValueError
 
-    data = ps.DataFrame(
+    data = pl.DataFrame(
         [
             {
                 "Benchmark": benchmark,
                 "Width": width,
                 "Number of parameters": get_metric(
                     wandb_entity,
-                    project(benchmark, width),
-                    run_name(benchmark, width),
+                    project("MT50", width),
+                    run_name("MT50", width),
                     "actor_num_params",
                     source="config",
                 )[0],
@@ -65,6 +65,15 @@ def main():
         ]
     ).explode("Success rate")
 
+
+    iq_data = data.group_by("Benchmark", "Width", "Number of parameters").agg(
+        pl.col("Success rate").quantile(0.25).alias("q1"),
+        pl.col("Success rate").quantile(0.75).alias("q3"),
+    )
+    data = data.join(iq_data, on=["Benchmark", "Width", "Number of parameters"], how="left").filter(
+        (pl.col("Success rate") >= pl.col("q1")) & (pl.col("Success rate") <= pl.col("q3"))
+    )
+
     x_axis = alt.X(
         "Number of parameters:Q",
         scale=alt.Scale(
@@ -80,14 +89,29 @@ def main():
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
+            values=[
+                data["Number of parameters"].min(),# pyright: ignore [reportArgumentType]
+                # 200_000,
+                # 500_000,
+                1_000_000,
+                2_000_000,
+                5e6,
+                # 9e6,
+                10_000_000,
+                30_000_000,
+            ],
         ),
     )
     y_axis = alt.Y(
-        "mean(Success rate)",
+        "mean(Success rate):Q",
         title="Success rate",
         scale=alt.Scale(domain=[0.5, 1]),
     )
-    color_axis = alt.Color("Benchmark:N", title="Benchmark").scale(
+    color_axis = alt.Color(
+        "Benchmark:N",
+        title="Benchmark",
+        legend=alt.Legend(orient="top-left", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=["MT10", "MT25", "MT50"],
         range=[
             design_system.COLORS["primary"][500],

@@ -19,6 +19,7 @@ from get_data import get_metric, get_metric_history
 class Args:
     width: int = 2048
 
+
 def main():
     args = tyro.cli(Args)
 
@@ -60,7 +61,10 @@ def main():
                 source="config",
             )[0],
             "Dormant neuron ratio": get_metric_history(
-                entity, project(benchmark, args.width), run_name(benchmark, args.width), metric
+                entity,
+                project(benchmark, args.width),
+                run_name(benchmark, args.width),
+                metric,
             ),
         }
         for benchmark in ["MT10", "MT50", "MT25"]
@@ -85,7 +89,7 @@ def main():
 
     max_timestep = 1e8
     x_axis = alt.X(
-        "Timestep:Q",
+        "Number of environment steps:Q",
         scale=alt.Scale(domain=[0, max_timestep]),
         title="Number of environment steps",
         axis=alt.Axis(
@@ -100,7 +104,11 @@ def main():
         title="Dormant neuron ratio (%)",
         scale=alt.Scale(domain=[0, 50]),
     )
-    color_axis = alt.Color("Benchmark:N", title="Benchmark").scale(
+    color_axis = alt.Color(
+        "Benchmark:N",
+        title="Benchmark",
+        legend=alt.Legend(orient="top-left", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=["MT10", "MT25", "MT50"],
         range=[
             design_system.COLORS["primary"][500],

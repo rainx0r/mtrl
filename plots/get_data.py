@@ -1,10 +1,9 @@
-# from wandb.apis.public.runs import Run
-# import json
 import json
-from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
+import scipy.stats
 import wandb
 
 CACHE_DIR = Path(__file__).parent.parent / "cache"
@@ -71,38 +70,13 @@ def get_metric_history(
 
     return data
 
+def iqm(scores: list[float]) -> float:
+    return scipy.stats.trim_mean(scores, proportiontocut=0.25)
 
-def main():
-    api = wandb.Api()
-    runs = api.runs("reggies-phd-research/mtrl-mt50-results")
+def compute_ci(scores: list[float]) -> tuple[float, float]:
+    n = len(scores)
+    mean = np.mean(scores)
+    std_err = scipy.stats.sem(scores)
+    ci = scipy.stats.t.interval(0.95, df=n-1, loc=mean, scale=std_err)
+    return ci
 
-    # run_names = ['mt10_mtmhsac_task_weights_false', 'mt10_softmodules_task_weights_false', 'mt10_moore_fix', 'mt10_mtmhsac_sm_params_3_layers_v2', 'mt10_mtmhsac_v2_moore_params_3_layers',
-    #     'mt10_mtmhsac_paco_params_v2_3_layers', 'mt10_paco', 'mt10_mtmhsac_v2_width_1024', 'mt10_mtmhsac_v2_width_2048', 'mt10_mtmhsac_v2_width_4096']
-
-    run_names = [
-        "mt50_mtmhsac_v2",
-        "mt50_softmodules_task_weights_false",
-        "mt50_moore",
-        "mt50_mtmhsac_moore_params_v2",
-        "mtmhsac_moore_params_log_std-10_clipped_q",
-        "mt50_paco",
-        "mt50_mtmhsac_sm_params_v2",
-        "mt50_mtmhsac_v2_paco_params_3_layers",
-        "mt50_mtmhsac_v2_2048_width",
-        "mt50_mtmhsac_v2_4096_width",
-    ]
-
-    # run_names = ['mt10_paco', 'mt10_softmodules_task_weights_false', 'mt10_moore_fix', 'mt10_mtmhsac_task_weights_false', 'mt10_care']
-
-    mt10_results = defaultdict(list)
-
-    # Get success rate
-    for run in runs:
-        if run.name in run_names and run.state != "running":
-            mt10_results[run.name].append(run.summary["charts/mean_success_rate"])
-
-    print(mt10_results)
-
-
-if __name__ == "__main__":
-    main()
