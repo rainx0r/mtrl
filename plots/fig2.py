@@ -103,19 +103,13 @@ def main():
         color=color_axis,
     )
 
-    line = base.mark_line(point=True).encode(
-        x=x_axis,
-        y=y_axis,
-    )
-
-    band = base.mark_errorband(extent="ci").encode(
-        x=x_axis,
-        y=y_axis,
-    )
+    line = base.mark_line(point=True)
+    band = base.mark_errorband(extent="ci")
     chart = band + line
     chart = (
         chart.properties(
-            width=600, height=400,
+            width=600,
+            height=400,
             # title="Scaling performance across MT10/MT25/MT50"
         )
         .configure_title(

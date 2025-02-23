@@ -108,19 +108,10 @@ def main():
     base = alt.Chart(data).encode(
         x=x_axis,
         y=y_axis,
-    )
-
-    line = base.mark_line().encode(
-        x=x_axis,
-        y=y_axis,
         color=alt.value(design_system.COLORS["primary"][500]),
     )
-
-    band = base.mark_errorband(extent="ci").encode(
-        x=x_axis,
-        y=y_axis,
-        color=alt.value(design_system.COLORS["primary"][500]),
-    )
+    line = base.mark_line()
+    band = base.mark_errorband(extent="ci")
     chart = band + line
     chart = (
         chart.properties(

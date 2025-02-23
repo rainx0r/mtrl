@@ -125,15 +125,8 @@ def main():
         color=color_axis,
     )
 
-    line = base.mark_line(clip=True, point=True).encode(
-        x=x_axis,
-        y=y_axis,
-    )
-
-    band = base.mark_errorband(extent="ci").encode(
-        x=x_axis,
-        y=y_axis,
-    )
+    line = base.mark_line(clip=True, point=True)
+    band = base.mark_errorband(extent="ci")
     chart = band + line
     chart = (
         chart.properties(
