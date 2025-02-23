@@ -47,8 +47,8 @@ def main():
             "Width": width,
             "Number of parameters": get_metric(
                 entity,
-                project(benchmark, width),
-                run_name(benchmark, width),
+                project("MT50", width),
+                run_name("MT50", width),
                 "actor_num_params",
                 source="config",
             )[0],
@@ -83,7 +83,8 @@ def main():
 
     data = data.with_columns(pl.col("Timestep").cast(pl.Int64))
     data = data.filter(
-        pl.col("Timestep") == pl.col("Timestep").max().over("Number of tasks", "Number of parameters")
+        pl.col("Timestep")
+        == pl.col("Timestep").max().over("Number of tasks", "Number of parameters")
     ).drop("Timestep")
 
     x_axis = alt.X(
@@ -101,6 +102,16 @@ def main():
             labelExpr="datum.value >= 1000000 ? format(datum.value / 1000000, '.0f') + 'M' : datum.value >= 1000 ? format(datum.value / 1000, '.0f') + 'K' : datum.value",
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
+            values=[
+                200_000,
+                500_000,
+                1_000_000,
+                2_000_000,
+                5e6,
+                9e6,
+                10_000_000,
+                30_000_000,
+            ],
         ),
     )
     y_axis = alt.Y(
@@ -108,7 +119,11 @@ def main():
         title="Dormant neuron ratio (%)",
         scale=alt.Scale(domain=[0, 50]),
     )
-    color_axis = alt.Color("Number of tasks:O", title="Number of tasks").scale(
+    color_axis = alt.Color(
+        "Number of tasks:O",
+        title="Number of tasks",
+        legend=alt.Legend(orient="top-right", symbolOpacity=1.0, symbolSize=50),
+    ).scale(
         domain=[10, 25, 50],
         range=[
             design_system.COLORS["primary"][500],
