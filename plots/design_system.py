@@ -65,3 +65,11 @@ FONT_SIZES = {
     "huge": 28,
     "Huge": 32,
 }
+
+FONT_SIZE_TOKENS = {
+    "title": FONT_SIZES["huge"],
+    "axis_title": FONT_SIZES["Large"],
+    "axis_label": FONT_SIZES["large"],
+    "legend_title": FONT_SIZES["Large"],
+    "legend_label": FONT_SIZES["large"],
+}

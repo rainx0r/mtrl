@@ -150,19 +150,19 @@ def main():
         )
         .configure_title(
             font=design_system.PRIMARY_FONT,
-            fontSize=20,
+            fontSize=design_system.FONT_SIZE_TOKENS["title"],
         )
         .configure_axis(
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
-            labelFontSize=14,
-            titleFontSize=16,
+            labelFontSize=design_system.FONT_SIZE_TOKENS["axis_label"],
+            titleFontSize=design_system.FONT_SIZE_TOKENS["axis_title"],
         )
         .configure_legend(
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
-            labelFontSize=14,
-            titleFontSize=16,
+            labelFontSize=design_system.FONT_SIZE_TOKENS["legend_label"],
+            titleFontSize=design_system.FONT_SIZE_TOKENS["legend_title"],
         )
     )
 
