@@ -24,15 +24,33 @@ def get_metric(
     else:
         print(f"No cache hit for {entity}/{project}/{run_name}, downloading...")
         api = wandb.Api(overrides={"entity": entity})
+        filters = {
+            "displayName": run_name,
+            "$or": [{"state": "finished"}, {"state": "failed"}],
+        }
         runs = api.runs(
-            project, filters={"config.exp_name": run_name, "state": "finished"}
+            project,
+            filters=filters,
         )
-        data = [
-            {"summary": dict(run.summary._json_dict), "config": dict(run.config)}
-            for run in runs
-        ]
+        data = []
+        unique_runs = set()
+        names = set()
+        for run in runs:
+            if run.id not in unique_runs:
+                unique_runs.add(run.id)
+                names.add(run.display_name)
+                data.append(
+                    {
+                        "summary": dict(run.summary._json_dict),
+                        "config": dict(run.config),
+                    }
+                )
         with open(cache_file, "w") as f:
             json.dump(data, f)
+
+    if run_name == "mt10_mtmhsac" and metric == "actor_num_params":
+        # HACK: This run is ancient and doesn't have an actor_num_params metric
+        return [370_000]
 
     return [run[source][metric] for run in data]
 
@@ -70,13 +88,14 @@ def get_metric_history(
 
     return data
 
+
 def iqm(scores: list[float]) -> float:
     return scipy.stats.trim_mean(scores, proportiontocut=0.25)
+
 
 def compute_ci(scores: list[float]) -> tuple[float, float]:
     n = len(scores)
     mean = np.mean(scores)
     std_err = scipy.stats.sem(scores)
-    ci = scipy.stats.t.interval(0.95, df=n-1, loc=mean, scale=std_err)
+    ci = scipy.stats.t.interval(0.95, df=n - 1, loc=mean, scale=std_err)
     return ci
-

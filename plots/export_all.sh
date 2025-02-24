@@ -1,3 +1,5 @@
+python plots/fig1_new.py --benchmark MT10
+python plots/fig1_new.py --benchmark MT50
 python plots/fig2.py
 python plots/fig3.py --benchmark MT10
 python plots/fig3.py --benchmark MT50

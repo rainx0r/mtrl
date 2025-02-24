@@ -65,7 +65,6 @@ def main():
         ]
     ).explode("Success rate")
 
-
     iq_data = data.group_by("Benchmark", "Width", "Number of parameters").agg(
         pl.col("Success rate").quantile(0.25).alias("q1"),
         pl.col("Success rate").quantile(0.75).alias("q3"),

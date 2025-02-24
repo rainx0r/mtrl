@@ -171,3 +171,4 @@ flake.lock
 .direnv
 .envrc
 cache
+.DS_Store
