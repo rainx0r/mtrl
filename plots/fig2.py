@@ -5,12 +5,12 @@ y-axis: success rate
 colour: benchmark
 """
 
+import pathlib
+
 import altair as alt
 import design_system
 import polars as pl
 from get_data import get_metric
-
-import pathlib
 
 
 def main():
@@ -23,10 +23,7 @@ def main():
         elif benchmark == "MT50":
             return "mtrl-mt50-results"
         elif benchmark == "MT25":
-            if width != 4096:
-                return "mtrl-mt25-results"
-            else:
-                raise NotImplementedError
+            return "mtrl-mt25-results"
         else:
             raise ValueError
 
@@ -36,7 +33,10 @@ def main():
         elif benchmark == "MT50":
             return f"mt50_mtmhsac_v2_{width}_width"
         elif benchmark == "MT25":
-            return f"mt25_mtmhsac_v2_{width}_width"
+            if width != 4096:
+                return f"mt25_mtmhsac_v2_{width}_width"
+            else:
+                return f"mt25_mtmhsac_v2_{width}"
         else:
             raise ValueError
 
@@ -61,7 +61,6 @@ def main():
             }
             for width in [256, 512, 1024, 2048, 4096]
             for benchmark in ["MT10", "MT25", "MT50"]
-            if not (benchmark == "MT25" and width == 4096)  # FIXME:
         ]
     ).explode("Success rate")
 
@@ -69,8 +68,11 @@ def main():
         pl.col("Success rate").quantile(0.25).alias("q1"),
         pl.col("Success rate").quantile(0.75).alias("q3"),
     )
-    data = data.join(iq_data, on=["Benchmark", "Width", "Number of parameters"], how="left").filter(
-        (pl.col("Success rate") >= pl.col("q1")) & (pl.col("Success rate") <= pl.col("q3"))
+    data = data.join(
+        iq_data, on=["Benchmark", "Width", "Number of parameters"], how="left"
+    ).filter(
+        (pl.col("Success rate") >= pl.col("q1"))
+        & (pl.col("Success rate") <= pl.col("q3"))
     )
 
     x_axis = alt.X(
@@ -89,7 +91,7 @@ def main():
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
             values=[
-                data["Number of parameters"].min(),# pyright: ignore [reportArgumentType]
+                data["Number of parameters"].min(),  # pyright: ignore [reportArgumentType]
                 # 200_000,
                 # 500_000,
                 1_000_000,

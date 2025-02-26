@@ -23,10 +23,7 @@ def main():
         elif benchmark == "MT50":
             return "mtrl-mt50-results"
         elif benchmark == "MT25":
-            if width != 4096:
-                return "mtrl-mt25-results"
-            else:
-                raise NotImplementedError
+            return "mtrl-mt25-results"
         else:
             raise ValueError
 
@@ -36,7 +33,10 @@ def main():
         elif benchmark == "MT50":
             return f"mt50_mtmhsac_v2_{width}_width"
         elif benchmark == "MT25":
-            return f"mt25_mtmhsac_v2_{width}_width"
+            if width != 4096:
+                return f"mt25_mtmhsac_v2_{width}_width"
+            else:
+                return f"mt25_mtmhsac_v2_{width}"
         else:
             raise ValueError
 
@@ -60,7 +60,7 @@ def main():
             ),
         }
         for (benchmark, num_tasks) in [("MT10", 10), ("MT50", 50), ("MT25", 25)]
-        for width in [256, 512, 1024, 2048]
+        for width in [256, 512, 1024, 2048, 4096]
     ]
 
     # Expand history data into individual rows
@@ -103,7 +103,7 @@ def main():
             titleFont=design_system.PRIMARY_FONT,
             labelFont=design_system.SECONDARY_FONT,
             values=[
-                data["Number of parameters"].min(), # pyright: ignore [reportArgumentType]
+                data["Number of parameters"].min(),  # pyright: ignore [reportArgumentType]
                 # 200_000,
                 500_000,
                 1_000_000,
