@@ -68,7 +68,7 @@ def main():
     data = pl.DataFrame(
         [
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -88,7 +88,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -106,7 +106,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -122,7 +122,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -140,7 +140,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -156,7 +156,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -172,7 +172,7 @@ def main():
                 ),
             },
             {
-                "Algorithm": "Simple baseline",
+                "Algorithm": "Simple feed-forward",
                 "Number of parameters": get_metric(
                     entity,
                     project(args.benchmark),
@@ -296,7 +296,7 @@ def main():
         title="Algorithm",
         legend=alt.Legend(orient="top-left", symbolOpacity=1.0, symbolSize=50),
     ).scale(
-        domain=["Simple baseline", "Soft Modules", "MOORE", "PaCo"],
+        domain=["Simple feed-forward", "Soft Modules", "MOORE", "PaCo"],
         range=[
             design_system.COLORS["primary"][500],
             design_system.COLORS["support 2"][600],
@@ -317,7 +317,7 @@ def main():
             "Algorithm:N",
             title="Algorithm",
         ).scale(
-            domain=["Simple baseline", "Soft Modules", "MOORE", "PaCo"],
+            domain=["Simple feed-forward", "Soft Modules", "MOORE", "PaCo"],
             range=[
                 "circle",
                 "triangle-down",
@@ -328,7 +328,7 @@ def main():
     )
     band = base.mark_errorband(extent="ci")
     baseline_errorbar = (
-        alt.Chart(data.filter(pl.col("Algorithm") != "Simple baseline"))
+        alt.Chart(data.filter(pl.col("Algorithm") != "Simple feed-forward"))
         .encode(
             x=x_axis,
             y=y_axis,

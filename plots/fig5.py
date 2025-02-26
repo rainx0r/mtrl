@@ -26,7 +26,7 @@ def main():
             ),
         },
         {
-            "Variant": "Critic - 1024",
+            "Variant": "Critic - 1024, Actor - 400",
             "Success rate": get_metric_history(
                 entity, project, "mt10_mtmhsac_v2_wide_critic", metric
             ),
@@ -38,7 +38,7 @@ def main():
             ),
         },
         {
-            "Variant": "Actor - 1024",
+            "Variant": "Actor - 1024, Critic - 400",
             "Success rate": get_metric_history(
                 entity, project, "mt10_mtmhsac_v2_wide_actor", metric
             ),
