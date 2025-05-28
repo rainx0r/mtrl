@@ -64,7 +64,7 @@ def main() -> None:
             total_steps=int(2_000_000 * NUM_TASKS),  # 1e8
             buffer_size=int(100_000 * NUM_TASKS),  # 5M
             batch_size=(128 * NUM_TASKS),  # 6400
-            evaluation_frequency=int(500_000 // 500),
+            evaluation_frequency=int(1_000_000 // 500),
         ),
         checkpoint=True,
         resume=args.resume,
