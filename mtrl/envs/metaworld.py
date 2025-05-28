@@ -148,6 +148,7 @@ class MetaworldConfig(EnvConfig):
                 reward_function_version=self.reward_func_version,
                 num_goals=self.num_goals,
                 reward_normalization_method=self.reward_normalization_method,
+                autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
             )
         elif self.env_id == "MT1":
             assert self.task_name is not None, "task_name must be specified for MT1"
@@ -175,4 +176,5 @@ class MetaworldConfig(EnvConfig):
                 reward_function_version=self.reward_func_version,
                 num_goals=self.num_goals,
                 reward_normalization_method=self.reward_normalization_method,
+                autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
             )

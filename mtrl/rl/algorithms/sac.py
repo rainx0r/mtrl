@@ -95,7 +95,7 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
     target_entropy: float = struct.field(pytree_node=False)
     num_critics: int = struct.field(pytree_node=False)
 
-    def spawn_replay_buffer(
+    def spawn_replay_buffer(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, env_config: EnvConfig, config: OffPolicyTrainingConfig, seed: int = 1
     ) -> ReplayBuffer:
         return ReplayBuffer(
@@ -171,6 +171,9 @@ class SAC(OffPolicyAlgorithm[SACConfig]):
             target_entropy=target_entropy,
             num_critics=config.num_critics,
         )
+
+    def reset(self, env_mask) -> None:
+        pass
 
     @override
     def get_num_params(self) -> dict[str, int]:

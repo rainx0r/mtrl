@@ -23,6 +23,9 @@ class Agent(Protocol):
         self, observations: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
 
+    def reset(self, env_mask: npt.NDArray[np.bool_]) -> None:
+        ...
+
 
 class ReplayBufferSamples(NamedTuple):
     observations: Float[Observation, " batch"]

@@ -158,6 +158,9 @@ class MTPPO(OnPolicyAlgorithm[MTPPOConfig]):
             split_vf_losses=config.vf_config.network_config.optimizer.requires_split_task_losses,
         )
 
+    def reset(self, env_mask) -> None:
+        pass
+
     @override
     def get_num_params(self) -> dict[str, int]:
         return {

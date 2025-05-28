@@ -123,12 +123,12 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
     def initialize(
         config: MTSACConfig, env_config: EnvConfig, seed: int = 1
     ) -> "MTSAC":
-        assert isinstance(
-            env_config.action_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
-        assert isinstance(
-            env_config.observation_space, gym.spaces.Box
-        ), "Non-box spaces currently not supported."
+        assert isinstance(env_config.action_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
+        assert isinstance(env_config.observation_space, gym.spaces.Box), (
+            "Non-box spaces currently not supported."
+        )
 
         master_key = jax.random.PRNGKey(seed)
         algorithm_key, actor_init_key, critic_init_key, alpha_init_key = (
@@ -193,6 +193,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             split_critic_losses=config.critic_config.network_config.optimizer.requires_split_task_losses,
         )
 
+    def reset(self, env_mask) -> None:
+        pass
+
     @override
     def get_num_params(self) -> dict[str, int]:
         return {
@@ -219,7 +222,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
         tasks = jnp.argmax(task_ids, axis=1)
         sorted_indices = jnp.argsort(tasks)
 
-        def group_by_task_leaf(leaf: Float[Array, "batch data_dim"]) -> Float[Array, "task task_batch data_dim"]:
+        def group_by_task_leaf(
+            leaf: Float[Array, "batch data_dim"],
+        ) -> Float[Array, "task task_batch data_dim"]:
             leaf_sorted = leaf[sorted_indices]
             return leaf_sorted.reshape(self.num_tasks, -1, leaf.shape[1])
 
@@ -237,7 +242,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
             flat = leaf.reshape(batch_size, leaf.shape[-1])
             # Create inverse permutation
             inverse_indices = jnp.zeros_like(sort_indices)
-            inverse_indices = inverse_indices.at[sort_indices].set(jnp.arange(batch_size))
+            inverse_indices = inverse_indices.at[sort_indices].set(
+                jnp.arange(batch_size)
+            )
             return flat[inverse_indices]
 
         return jax.tree.map(reconstruct_leaf, split_data)
@@ -449,7 +456,9 @@ class MTSAC(OffPolicyAlgorithm[MTSACConfig]):
 
         if self.split_critic_losses or self.split_actor_losses:
             split_data, _ = self.split_data_by_tasks(data, task_ids)
-            split_alpha_vals, alpha_val_indices = self.split_data_by_tasks(alpha_vals, task_ids)
+            split_alpha_vals, alpha_val_indices = self.split_data_by_tasks(
+                alpha_vals, task_ids
+            )
             split_task_weights, _ = (
                 self.split_data_by_tasks(task_weights, task_ids)
                 if task_weights is not None
