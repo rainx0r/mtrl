@@ -27,7 +27,7 @@ def main() -> None:
     NUM_TASKS = 50
 
     experiment = Experiment(
-        exp_name="mt50_softmodules_moore_params",
+        exp_name="mt50_softmodules_paco_params",
         seed=args.seed,
         data_dir=args.data_dir,
         env=MetaworldConfig(
@@ -43,8 +43,8 @@ def main() -> None:
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=4,
                     num_modules=4,
-                    width=305,
-                    module_width=305,
+                    width=634,
+                    module_width=634,
                 )
             ),
             critic_config=QValueFunctionConfig(
@@ -53,8 +53,8 @@ def main() -> None:
                     optimizer=OptimizerConfig(max_grad_norm=1.0),
                     depth=4,
                     num_modules=4,
-                    width=305,
-                    module_width=305,
+                    width=634,
+                    module_width=634,
                 )
             ),
             num_critics=2,
