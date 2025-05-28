@@ -119,12 +119,12 @@ class OffPolicyAlgorithm(
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
     ) -> Self:
-        global_episodic_return: Deque[float] = deque([], maxlen=20 * envs.num_envs)
-        global_episodic_length: Deque[int] = deque([], maxlen=20 * envs.num_envs)
+        global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
+        global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
 
         obs, _ = envs.reset()
 
-        has_autoreset = np.full((envs.num_envs,), False)
+        done = np.full((envs.num_envs,), False)
         start_step, episodes_ended = 0, 0
 
         if checkpoint_metadata is not None:
@@ -146,24 +146,26 @@ class OffPolicyAlgorithm(
                 self, actions = self.sample_action(obs)
 
             next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+            done = np.logical_or(terminations, truncations)
 
-            if not has_autoreset.any():
-                replay_buffer.add(obs, next_obs, actions, rewards, terminations)
-            elif has_autoreset.any() and not has_autoreset.all():
-                # TODO: handle the case where only some envs have autoreset
-                raise NotImplementedError(
-                    "Only some envs resetting isn't implemented at the moment."
+            buffer_obs = next_obs
+            if "final_obs" in infos:
+                buffer_obs = np.where(
+                    done[:, None], np.stack(infos["final_obs"]), next_obs
                 )
-
-            has_autoreset = np.logical_or(terminations, truncations)
-
-            for i, env_ended in enumerate(has_autoreset):
-                if env_ended:
-                    global_episodic_return.append(infos["episode"]["r"][i])
-                    global_episodic_length.append(infos["episode"]["l"][i])
-                    episodes_ended += 1
+            replay_buffer.add(obs, buffer_obs, actions, rewards, done)
 
             obs = next_obs
+
+            for i, env_ended in enumerate(done):
+                if env_ended:
+                    global_episodic_return.append(
+                        infos["final_info"]["episode"]["r"][i]
+                    )
+                    global_episodic_length.append(
+                        infos["final_info"]["episode"]["l"][i]
+                    )
+                    episodes_ended += 1
 
             if global_step % 500 == 0 and global_episodic_return:
                 print(
@@ -200,7 +202,7 @@ class OffPolicyAlgorithm(
                 if (
                     config.evaluation_frequency > 0
                     and episodes_ended % config.evaluation_frequency == 0
-                    and has_autoreset.any()
+                    and done.any()
                     and global_step > 0
                 ):
                     mean_success_rate, mean_returns, mean_success_per_task = (
@@ -221,20 +223,9 @@ class OffPolicyAlgorithm(
                     if track:
                         wandb.log(eval_metrics, step=total_steps)
 
-                    if config.compute_network_metrics.value != 0:
-                        self, network_metrics = self.get_metrics(
-                            config.compute_network_metrics, data
-                        )
-
-                        if track:
-                            wandb.log(network_metrics, step=total_steps)
-
-                    # Reset envs again to exit eval mode
-                    obs, _ = envs.reset()
-
                     # Checkpointing
                     if checkpoint_manager is not None:
-                        if not has_autoreset.all():
+                        if not done.all():
                             raise NotImplementedError(
                                 "Checkpointing currently doesn't work for the case where evaluation is run before all envs have finished their episodes / are about to be reset."
                             )
@@ -254,6 +245,10 @@ class OffPolicyAlgorithm(
                                 for k, v in eval_metrics.items()
                             },
                         )
+
+                    # Reset envs again to exit eval mode
+                    obs, _ = envs.reset()
+
         return self
 
 
@@ -293,12 +288,12 @@ class OnPolicyAlgorithm(
         checkpoint_metadata: CheckpointMetadata | None = None,
         buffer_checkpoint: ReplayBufferCheckpoint | None = None,
     ) -> Self:
-        global_episodic_return: Deque[float] = deque([], maxlen=20 * envs.num_envs)
-        global_episodic_length: Deque[int] = deque([], maxlen=20 * envs.num_envs)
+        global_episodic_return: Deque[float] = deque([], maxlen=20 * self.num_tasks)
+        global_episodic_length: Deque[int] = deque([], maxlen=20 * self.num_tasks)
 
         obs, _ = envs.reset()
 
-        has_autoreset = np.full((envs.num_envs,), False)
+        episode_started = np.ones((envs.num_envs,))
         start_step, episodes_ended = 0, 0
 
         if checkpoint_metadata is not None:
@@ -306,39 +301,40 @@ class OnPolicyAlgorithm(
             episodes_ended = checkpoint_metadata["episodes_ended"]
 
         rollout_buffer = self.spawn_rollout_buffer(env_config, config, seed)
-        # TODO:
-        # if buffer_checkpoint is not None:
-        #     rollout_buffer.load_checkpoint(buffer_checkpoint)
 
         start_time = time.time()
 
         for global_step in range(start_step, config.total_steps // envs.num_envs):
             total_steps = global_step * envs.num_envs
 
-            self, actions, log_probs, means, stds, values = (
+            self, actions, log_probs, means, stds, value = (
                 self.sample_action_dist_and_value(obs)
             )
-
             next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+
             rollout_buffer.add(
                 obs,
                 actions,
                 rewards,
-                terminations or truncations,
-                values,
-                log_probs,
-                means,
-                stds,
+                episode_started,
+                value=value,
+                log_prob=log_probs,
+                mean=means,
+                std=stds,
             )
 
-            has_autoreset = np.logical_or(terminations, truncations)
-            for i, env_ended in enumerate(has_autoreset):
-                if env_ended:
-                    global_episodic_return.append(infos["episode"]["r"][i])
-                    global_episodic_length.append(infos["episode"]["l"][i])
-                    episodes_ended += 1
-
+            episode_started = np.logical_or(terminations, truncations)
             obs = next_obs
+
+            for i, env_ended in enumerate(episode_started):
+                if env_ended:
+                    global_episodic_return.append(
+                        infos["final_info"]["episode"]["r"][i]
+                    )
+                    global_episodic_length.append(
+                        infos["final_info"]["episode"]["l"][i]
+                    )
+                    episodes_ended += 1
 
             if global_step % 500 == 0 and global_episodic_return:
                 print(
@@ -367,110 +363,68 @@ class OnPolicyAlgorithm(
                     wandb.log({"charts/SPS": sps}, step=total_steps)
 
             if rollout_buffer.ready:
-                last_values = None
-                if config.compute_advantages:
-                    self, _, _, _, _, last_values = self.sample_action_dist_and_value(
-                        next_obs
-                    )
-
                 rollouts = rollout_buffer.get(
-                    config.compute_advantages, last_values, terminations or truncations
+                    compute_advantages=True,
+                    last_values=value,
+                    dones=terminations,
+                    gamma=config.gamma,
+                    gae_lambda=config.gae_lambda,
                 )
-
-                # Flatten batch dims
-                rollouts = Rollout(
-                    *map(lambda x: x.reshape(-1, x.shape[-1]) if x else None, rollouts)  # pyright: ignore[reportArgumentType]
-                )
-
-                rollout_size = rollouts.observations.shape[0]
-                minibatch_size = rollout_size // config.num_gradient_steps
-
-                logs = {}
-                batch_inds = np.arange(rollout_size)
-                for epoch in range(config.num_epochs):
-                    np.random.shuffle(batch_inds)
-                    for start in range(0, rollout_size, minibatch_size):
-                        end = start + minibatch_size
-                        minibatch_rollout = Rollout(
-                            *map(
-                                lambda x: x[batch_inds[start:end]] if x else None,  # pyright: ignore[reportArgumentType]
-                                rollouts,
-                            )
-                        )
-                        self, logs = self.update(minibatch_rollout)
-
-                    if config.target_kl is not None:
-                        assert (
-                            "losses/approx_kl" in logs
-                        ), "Algorithm did not provide approximate KL div, but approx_kl is not None."
-                        if logs["losses/approx_kl"] > config.target_kl:
-                            print(
-                                f"Stopped early at KL {logs['losses/approx_kl']}, ({epoch} epochs)"
-                            )
-                            break
-
+                self, logs = self.update(rollouts)
                 rollout_buffer.reset()
 
                 if track:
                     wandb.log(logs, step=total_steps)
 
-                if config.compute_network_metrics.value != 0:
-                    self, metrics = self.get_metrics(
-                        config.compute_network_metrics, rollouts
+                # Evaluation
+                if (
+                    config.evaluation_frequency > 0
+                    and episodes_ended % config.evaluation_frequency == 0
+                    and episode_started.any()
+                    and global_step > 0
+                ):
+                    mean_success_rate, mean_returns, mean_success_per_task = (
+                        env_config.evaluate(envs, self)
+                    )
+                    eval_metrics = {
+                        "charts/mean_success_rate": float(mean_success_rate),
+                        "charts/mean_evaluation_return": float(mean_returns),
+                    } | {
+                        f"charts/{task_name}_success_rate": float(success_rate)
+                        for task_name, success_rate in mean_success_per_task.items()
+                    }
+                    print(
+                        f"total_steps={total_steps}, mean evaluation success rate: {mean_success_rate:.4f}"
+                        + f" return: {mean_returns:.4f}"
                     )
 
                     if track:
-                        wandb.log(metrics, step=total_steps)
+                        wandb.log(eval_metrics, step=total_steps)
 
-            # Evaluation
-            if (
-                config.evaluation_frequency > 0
-                and episodes_ended % config.evaluation_frequency == 0
-                and has_autoreset.any()
-                and global_step > 0
-            ):
-                mean_success_rate, mean_returns, mean_success_per_task = (
-                    env_config.evaluate(envs, self)
-                )
-                eval_metrics = {
-                    "charts/mean_success_rate": float(mean_success_rate),
-                    "charts/mean_evaluation_return": float(mean_returns),
-                } | {
-                    f"charts/{task_name}_success_rate": float(success_rate)
-                    for task_name, success_rate in mean_success_per_task.items()
-                }
-                print(
-                    f"total_steps={total_steps}, mean evaluation success rate: {mean_success_rate:.4f}"
-                    + f" return: {mean_returns:.4f}"
-                )
+                    # Checkpointing
+                    if checkpoint_manager is not None:
+                        if not episode_started.all():
+                            raise NotImplementedError(
+                                "Checkpointing currently doesn't work for the case where evaluation is run before all envs have finished their episodes / are about to be reset."
+                            )
 
-                if track:
-                    wandb.log(eval_metrics, step=total_steps)
-
-                # Reset envs again to exit eval mode
-                obs, _ = envs.reset()
-
-                # Checkpointing
-                if checkpoint_manager is not None:
-                    if not has_autoreset.all():
-                        raise NotImplementedError(
-                            "Checkpointing currently doesn't work for the case where evaluation is run before all envs have finished their episodes / are about to be reset."
+                        checkpoint_manager.save(
+                            total_steps,
+                            args=get_checkpoint_save_args(
+                                self,
+                                envs,
+                                global_step,
+                                episodes_ended,
+                                run_timestamp,
+                            ),
+                            metrics={
+                                k.removeprefix("charts/"): v
+                                for k, v in eval_metrics.items()
+                            },
                         )
 
-                    checkpoint_manager.save(
-                        total_steps,
-                        args=get_checkpoint_save_args(
-                            self,
-                            envs,
-                            global_step,
-                            episodes_ended,
-                            run_timestamp,
-                            # buffer=replay_buffer, TODO:
-                        ),
-                        metrics={
-                            k.removeprefix("charts/"): v
-                            for k, v in eval_metrics.items()
-                        },
-                    )
+                    # Reset envs again to exit eval mode
+                    obs, _ = envs.reset()
+                    episode_started = np.ones((envs.num_envs,))
 
         return self
